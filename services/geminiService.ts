@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { PaperAnalysis, ImplementationResult } from "../types";
 
@@ -6,7 +5,9 @@ export class GeminiService {
   private ai: GoogleGenAI;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    // Safely access the API key to prevent ReferenceError in browser
+    const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : (window as any).process?.env?.API_KEY;
+    this.ai = new GoogleGenAI({ apiKey: apiKey || '' });
   }
 
   async analyzePaper(pdfBase64: string): Promise<PaperAnalysis> {
