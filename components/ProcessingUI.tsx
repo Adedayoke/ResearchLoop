@@ -58,7 +58,7 @@ const ProcessingUI: React.FC<ProcessingUIProps> = ({ steps, currentLog, activeSt
             </div>
             <div className="flex-1 font-mono text-[11px] leading-relaxed overflow-y-auto space-y-2 text-github-text">
               <p className="text-github-text/30">$ research-agent --verbose --pdf-source=input.pdf</p>
-              <p className="text-peach-accent">>> Initializing session sequence...</p>
+              <p className="text-peach-accent">{">>"} Initializing session sequence...</p>
               {steps.filter(s => s.status === 'success').map((s, idx) => (
                 <p key={idx} className="text-github-text/60">{`[OK] ${s.label} completed successfully.`}</p>
               ))}
