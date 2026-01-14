@@ -5,103 +5,122 @@ export class GeminiService {
   private ai: GoogleGenAI;
 
   constructor() {
-    // Safely access the API key to prevent ReferenceError in browser
     const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : (window as any).process?.env?.API_KEY;
     this.ai = new GoogleGenAI({ apiKey: apiKey || '' });
   }
 
-  async analyzePaper(pdfBase64: string): Promise<PaperAnalysis> {
-    const response = await this.ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: {
-        parts: [
-          { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-          { text: "Analyze the methodology, equations, and benchmarks of this paper. Output JSON." }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            authors: { type: Type.ARRAY, items: { type: Type.STRING } },
-            summary: { type: Type.STRING },
-            methodology: { type: Type.STRING },
-            algorithmPseudocode: { type: Type.STRING },
-            metrics: { type: Type.ARRAY, items: { type: Type.STRING } },
-            benchmarks: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  score: { type: Type.NUMBER },
-                  unit: { type: Type.STRING }
-                },
-                required: ["name", "score", "unit"]
-              }
-            }
-          },
-          required: ["title", "summary", "algorithmPseudocode", "benchmarks"]
-        }
-      }
-    });
+  private handleError(error: any) {
+    if (error?.status === 429 || error?.message?.includes('429')) {
+      throw new Error("QUOTA_EXCEEDED: The Gemini API rate limit was reached. Please wait a minute or use a key with higher limits.");
+    }
+    throw error;
+  }
 
-    return JSON.parse(response.text || '{}');
+  async analyzePaper(pdfBase64: string): Promise<PaperAnalysis> {
+    try {
+      const response = await this.ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: {
+          parts: [
+            { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
+            { text: "Extract methodology, equations, and benchmarks from this PDF. Focus on variables and logical flow for implementation. Output JSON." }
+          ]
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              authors: { type: Type.ARRAY, items: { type: Type.STRING } },
+              summary: { type: Type.STRING },
+              methodology: { type: Type.STRING },
+              algorithmPseudocode: { type: Type.STRING },
+              metrics: { type: Type.ARRAY, items: { type: Type.STRING } },
+              benchmarks: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    score: { type: Type.NUMBER },
+                    unit: { type: Type.STRING }
+                  },
+                  required: ["name", "score", "unit"]
+                }
+              }
+            },
+            required: ["title", "summary", "algorithmPseudocode", "benchmarks"]
+          }
+        }
+      });
+
+      return JSON.parse(response.text || '{}');
+    } catch (e) {
+      this.handleError(e);
+      return {} as any;
+    }
   }
 
   async generateInitialImplementation(analysis: PaperAnalysis): Promise<ImplementationResult> {
     const prompt = `
-      Implement the paper "${analysis.title}". 
-      Math focus: ${analysis.methodology}
+      Implement the research paper "${analysis.title}" autonomously.
+      Theory: ${analysis.methodology}
+      Pseudocode: ${analysis.algorithmPseudocode}
       
-      Generate Python (Pyodide compatible).
-      Also provide a list of 'equationMappings' that link specific parts of the implementation code back to the paper's theoretical equations or logic.
-      Estimate a 'matchScore' (0-100) representing how accurately this code reflects the paper's theory.
+      Requirements:
+      1. Use Python (Pyodide/Numpy compatible).
+      2. Map equations directly to code sections in 'equationMappings'.
+      3. Create a test suite that verifies the logic against the paper's benchmarks.
     `;
 
-    const response = await this.ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            code: { type: Type.STRING },
-            explanation: { type: Type.STRING },
-            tests: { type: Type.STRING },
-            matchScore: { type: Type.NUMBER },
-            equationMappings: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  theory: { type: Type.STRING, description: "Equation name or theoretical description from the paper" },
-                  codeSnippet: { type: Type.STRING, description: "The specific line or function implementing it" },
-                  explanation: { type: Type.STRING, description: "Brief educational explanation" }
+    try {
+      const response = await this.ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingBudget: 16000 },
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              code: { type: Type.STRING },
+              explanation: { type: Type.STRING },
+              tests: { type: Type.STRING },
+              matchScore: { type: Type.NUMBER },
+              equationMappings: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    theory: { type: Type.STRING },
+                    codeSnippet: { type: Type.STRING },
+                    explanation: { type: Type.STRING }
+                  }
                 }
               }
-            }
-          },
-          required: ["code", "explanation", "tests", "equationMappings", "matchScore"]
+            },
+            required: ["code", "explanation", "tests", "equationMappings", "matchScore"]
+          }
         }
-      }
-    });
+      });
 
-    const result = JSON.parse(response.text || '{}');
-    return {
-      ...result,
-      testResults: { passed: false, logs: "" },
-      iterationCount: 1,
-      history: [],
-      finalBenchmarkComparison: analysis.benchmarks.map(b => ({
-        name: b.name,
-        paperValue: b.score,
-        implValue: b.score * (0.8 + Math.random() * 0.1) 
-      }))
-    };
+      const result = JSON.parse(response.text || '{}');
+      return {
+        ...result,
+        testResults: { passed: false, logs: "" },
+        iterationCount: 1,
+        history: [],
+        finalBenchmarkComparison: analysis.benchmarks.map(b => ({
+          name: b.name,
+          paperValue: b.score,
+          implValue: b.score * (0.8 + Math.random() * 0.1) 
+        }))
+      };
+    } catch (e) {
+      this.handleError(e);
+      return {} as any;
+    }
   }
 
   async refineImplementation(
@@ -110,40 +129,45 @@ export class GeminiService {
     errorLogs: string
   ): Promise<any> {
     const prompt = `
-      The previous implementation failed:
+      The previous implementation for "${analysis.title}" failed with these logs:
       ${errorLogs}
       
-      Refine the code. Increase the matchScore. Update equationMappings if logic changes.
+      Synthesize a fix that maintains theoretical alignment.
     `;
 
-    const response = await this.ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            code: { type: Type.STRING },
-            explanation: { type: Type.STRING },
-            tests: { type: Type.STRING },
-            matchScore: { type: Type.NUMBER },
-            equationMappings: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  theory: { type: Type.STRING },
-                  codeSnippet: { type: Type.STRING },
-                  explanation: { type: Type.STRING }
+    try {
+      const response = await this.ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingBudget: 12000 },
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              code: { type: Type.STRING },
+              explanation: { type: Type.STRING },
+              tests: { type: Type.STRING },
+              matchScore: { type: Type.NUMBER },
+              equationMappings: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    theory: { type: Type.STRING },
+                    codeSnippet: { type: Type.STRING },
+                    explanation: { type: Type.STRING }
+                  }
                 }
               }
             }
           }
         }
-      }
-    });
+      });
 
-    return JSON.parse(response.text || '{}');
+      return JSON.parse(response.text || '{}');
+    } catch (e) {
+      this.handleError(e);
+    }
   }
 }
