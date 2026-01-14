@@ -1,8 +1,9 @@
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { AppState, StepStatus, PaperAnalysis, ImplementationResult } from './types';
 import { STEPS, Icons } from './constants';
 import { GeminiService } from './services/geminiService';
+import { executionService } from './services/executionService';
 import ProcessingUI from './components/ProcessingUI';
 import ResultsUI from './components/ResultsUI';
 
@@ -16,12 +17,16 @@ const App: React.FC = () => {
   const [implementation, setImplementation] = useState<ImplementationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // New UI States
   const [isGitConnected, setIsGitConnected] = useState(false);
   const [isConnectingGit, setIsConnectingGit] = useState(false);
   const [activeOverlay, setActiveOverlay] = useState<'manifesto' | 'archive' | null>(null);
 
   const geminiRef = useRef(new GeminiService());
+
+  useEffect(() => {
+    // Warm up pyodide in background
+    executionService.init().catch(console.error);
+  }, []);
 
   const updateStep = (id: AppState, status: StepStatus['status'], message?: string) => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, message } : s));
@@ -63,27 +68,46 @@ const App: React.FC = () => {
         
         setState(AppState.IMPLEMENTING);
         updateStep(AppState.IMPLEMENTING, 'loading', 'Generating logic...');
-        addLog("Synthesizing paper-accurate implementation...");
+        addLog("Synthesizing paper-accurate implementation in Python...");
         let result = await geminiRef.current.generateInitialImplementation(paperData);
-        updateStep(AppState.IMPLEMENTING, 'success', 'Code generated');
+        updateStep(AppState.IMPLEMENTING, 'success', 'Code synthesized');
 
-        setState(AppState.TESTING);
-        updateStep(AppState.TESTING, 'loading', 'Executing verification...');
-        addLog(`Running test suite (Cycle ${result.iterationCount})...`);
-        
-        if (!result.testResults.passed) {
-          setState(AppState.DEBUGGING);
-          updateStep(AppState.DEBUGGING, 'loading', 'Self-correcting...');
-          addLog("Analyzing tracebacks and refining logic...");
-          result = await geminiRef.current.refineImplementation(paperData, result, result.testResults.logs);
-          updateStep(AppState.DEBUGGING, 'success', 'Logical parity achieved');
-        } else {
-          updateStep(AppState.DEBUGGING, 'success', 'No anomalies found');
+        // Testing Loop
+        let passed = false;
+        let iteration = 1;
+        const MAX_ITERATIONS = 3;
+
+        while (!passed && iteration <= MAX_ITERATIONS) {
+          setState(AppState.TESTING);
+          updateStep(AppState.TESTING, 'loading', `Verifying cycle ${iteration}...`);
+          addLog(`Booting Pyodide environment for iteration ${iteration}...`);
+          
+          const runResults = await executionService.runPython(result.code, result.tests);
+          result.testResults = runResults;
+          passed = runResults.passed;
+
+          if (!passed) {
+            if (iteration === MAX_ITERATIONS) break;
+            
+            setState(AppState.DEBUGGING);
+            updateStep(AppState.DEBUGGING, 'loading', `Debugging failure ${iteration}...`);
+            addLog(`Analyzing traceback: ${runResults.logs.split('\n').pop()}`);
+            result = await geminiRef.current.refineImplementation(paperData, result, runResults.logs);
+            result.iterationCount = iteration + 1;
+            iteration++;
+            updateStep(AppState.DEBUGGING, 'success', `Fix applied for loop ${iteration-1}`);
+          } else {
+            updateStep(AppState.DEBUGGING, 'success', 'Logical parity achieved');
+          }
         }
 
-        updateStep(AppState.TESTING, 'success', 'Tests validated');
+        if (!passed) {
+          throw new Error("Autonomous agent reached max iterations without convergence. Check logs for details.");
+        }
+
+        updateStep(AppState.TESTING, 'success', 'All verification tests passed');
         setState(AppState.COMPLETED);
-        updateStep(AppState.COMPLETED, 'success', 'Loop complete');
+        updateStep(AppState.COMPLETED, 'success', 'Verification complete');
         setImplementation(result);
       };
       reader.readAsDataURL(file);
@@ -203,8 +227,8 @@ const App: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-12 pt-12 border-t border-github-black/10">
               {[
-                { title: 'Zero-Shot Analysis', desc: 'Precise extraction of math and logic from multi-column layouts.' },
-                { title: 'Self-Correction', desc: 'Gemini-driven debugging loops that resolve test failures automatically.' },
+                { title: 'In-Browser Runtime', desc: 'Real Python execution using Pyodide (WASM) for verification.' },
+                { title: 'Self-Correction', desc: 'Gemini-driven debugging loops that fix real traceback errors.' },
                 { title: 'Benchmark Parity', desc: 'Validation of implementation accuracy against paper reported scores.' }
               ].map((item, i) => (
                 <div key={i} className="space-y-3">
@@ -240,7 +264,7 @@ const App: React.FC = () => {
 
       <footer className="mt-32 border-t border-github-black/5 py-12 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8 opacity-40 hover:opacity-100 transition-opacity">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em]">ResearchLoop Engine v1.0 // Gemini 3 Pro</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em]">ResearchLoop Engine v1.0 // Pyodide Runtime</p>
           <div className="flex gap-10">
             {['Source', 'Privacy', 'Legal'].map(link => (
               <a key={link} href="#" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-peach-accent">{link}</a>

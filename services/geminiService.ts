@@ -64,11 +64,12 @@ export class GeminiService {
       Summary: ${analysis.summary}
       Algorithm: ${analysis.algorithmPseudocode}
       
-      Generate a clean, professional implementation in Python or TypeScript (whichever is more suitable for this research).
-      Also provide a suite of unit tests that verify the core logic.
-      Assume standard libraries are available.
+      Generate a clean, modular Python implementation.
+      Also provide a suite of unit tests using standard assertions.
+      The tests will be executed in a browser-based Pyodide environment.
       
       Output JSON containing implementation code, documentation, and tests.
+      The 'tests' field should contain only the test body (assertions/function calls).
     `;
 
     const response = await this.ai.models.generateContent({
@@ -79,17 +80,11 @@ export class GeminiService {
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            code: { type: Type.STRING },
+            code: { type: Type.STRING, description: "The main algorithm implementation" },
             explanation: { type: Type.STRING },
-            tests: { type: Type.STRING },
-            testResults: {
-              type: Type.OBJECT,
-              properties: {
-                passed: { type: Type.BOOLEAN },
-                logs: { type: Type.STRING }
-              }
-            }
-          }
+            tests: { type: Type.STRING, description: "Python code that executes the logic and asserts correctness" }
+          },
+          required: ["code", "explanation", "tests"]
         }
       }
     });
@@ -97,11 +92,12 @@ export class GeminiService {
     const result = JSON.parse(response.text || '{}');
     return {
       ...result,
+      testResults: { passed: false, logs: "" },
       iterationCount: 1,
       finalBenchmarkComparison: analysis.benchmarks.map(b => ({
         name: b.name,
         paperValue: b.score,
-        implValue: b.score * (0.95 + Math.random() * 0.1) // Simulated validation
+        implValue: b.score * (0.95 + Math.random() * 0.1) // This remains simulated for the chart, but test status is real
       }))
     };
   }
@@ -112,12 +108,18 @@ export class GeminiService {
     errorLogs: string
   ): Promise<ImplementationResult> {
     const prompt = `
-      The previous implementation for "${analysis.title}" failed tests.
-      Current Code: ${currentResult.code}
-      Test Logs: ${errorLogs}
+      The previous Python implementation for "${analysis.title}" failed in the Pyodide runtime.
       
-      Analyze the errors, fix the implementation and the tests. 
-      Ensure the implementation strictly follows the methodology from the paper: ${analysis.methodology}.
+      Runtime Error Traceback:
+      ${errorLogs}
+      
+      Current Code:
+      ${currentResult.code}
+      
+      Current Tests:
+      ${currentResult.tests}
+      
+      Fix the code and tests. Ensure they strictly follow the methodology: ${analysis.methodology}.
     `;
 
     const response = await this.ai.models.generateContent({
@@ -130,15 +132,9 @@ export class GeminiService {
           properties: {
             code: { type: Type.STRING },
             explanation: { type: Type.STRING },
-            tests: { type: Type.STRING },
-            testResults: {
-              type: Type.OBJECT,
-              properties: {
-                passed: { type: Type.BOOLEAN },
-                logs: { type: Type.STRING }
-              }
-            }
-          }
+            tests: { type: Type.STRING }
+          },
+          required: ["code", "explanation", "tests"]
         }
       }
     });
@@ -146,6 +142,7 @@ export class GeminiService {
     const newResult = JSON.parse(response.text || '{}');
     return {
       ...newResult,
+      testResults: { passed: false, logs: "" },
       iterationCount: currentResult.iterationCount + 1,
       finalBenchmarkComparison: currentResult.finalBenchmarkComparison
     };
