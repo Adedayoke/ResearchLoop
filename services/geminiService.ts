@@ -10,10 +10,11 @@ export class GeminiService {
   }
 
   private handleError(error: any) {
+    console.error("Gemini API Error:", error);
     if (error?.status === 429 || error?.message?.includes('429')) {
-      throw new Error("QUOTA_EXCEEDED: The Gemini API rate limit was reached. Please wait a minute or use a key with higher limits.");
+      throw new Error("QUOTA_LIMIT: The Gemini 3 Flash rate limit was reached. This usually happens during high-frequency reasoning loops. Please wait 60 seconds and try again.");
     }
-    throw error;
+    throw new Error(error?.message || "An unexpected error occurred during reasoning.");
   }
 
   async analyzePaper(pdfBase64: string): Promise<PaperAnalysis> {
@@ -23,10 +24,12 @@ export class GeminiService {
         contents: {
           parts: [
             { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-            { text: "Extract methodology, equations, and benchmarks from this PDF. Focus on variables and logical flow for implementation. Output JSON." }
+            { text: "Perform deep multimodal analysis on this PDF. Extract the primary algorithm, all mathematical equations (LaTeX), and benchmark results. Focus on implementation feasibility. Output JSON." }
           ]
         },
         config: {
+          // Use a moderate thinking budget for initial analysis to save on latency/quota
+          thinkingConfig: { thinkingBudget: 4000 },
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -64,14 +67,15 @@ export class GeminiService {
 
   async generateInitialImplementation(analysis: PaperAnalysis): Promise<ImplementationResult> {
     const prompt = `
-      Implement the research paper "${analysis.title}" autonomously.
-      Theory: ${analysis.methodology}
-      Pseudocode: ${analysis.algorithmPseudocode}
+      Act as a world-class research engineer. Implement "${analysis.title}" in Python.
+      The code must be fully functional in a Pyodide environment with 'numpy' support.
       
-      Requirements:
-      1. Use Python (Pyodide/Numpy compatible).
-      2. Map equations directly to code sections in 'equationMappings'.
-      3. Create a test suite that verifies the logic against the paper's benchmarks.
+      Paper Logic: ${analysis.methodology}
+      
+      Generate:
+      1. A robust implementation.
+      2. A suite of test cases that verify the algorithm's mathematical parity.
+      3. Precise mapping of code snippets to the original paper's equations.
     `;
 
     try {
@@ -79,7 +83,8 @@ export class GeminiService {
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: {
-          thinkingConfig: { thinkingBudget: 16000 },
+          // Maximize reasoning depth for the implementation phase
+          thinkingConfig: { thinkingBudget: 24576 },
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -129,10 +134,11 @@ export class GeminiService {
     errorLogs: string
   ): Promise<any> {
     const prompt = `
-      The previous implementation for "${analysis.title}" failed with these logs:
+      Autonomous Verification Loop: The previous implementation for "${analysis.title}" failed.
+      Traceback/Logs:
       ${errorLogs}
       
-      Synthesize a fix that maintains theoretical alignment.
+      Synthesize a self-corrected version. Focus on ensuring the logical flow matches the paper's methodology.
     `;
 
     try {
@@ -140,7 +146,7 @@ export class GeminiService {
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: {
-          thinkingConfig: { thinkingBudget: 12000 },
+          thinkingConfig: { thinkingBudget: 20000 },
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
