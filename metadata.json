@@ -1,0 +1,8 @@
+{
+  "name": "ResearchLoop",
+  "description": "An autonomous AI research assistant that reads PDFs, extracts algorithms, generates implementation code, and runs self-correcting testing loops to verify implementation accuracy.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

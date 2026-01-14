@@ -1,0 +1,67 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResearchLoop - Autonomous Paper Implementation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Space Grotesk', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+          colors: {
+            peach: {
+              50: '#fdfcfb',
+              100: '#f9f7f2', // Claude-inspired peach/cream
+              200: '#f3f0e8',
+              accent: '#d97757', // Muted orange/peach accent
+            },
+            github: {
+              black: '#0d1117',
+              gray: '#161b22',
+              border: '#30363d',
+              text: '#c9d1d9',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #f9f7f2;
+      color: #0d1117;
+    }
+    .github-dark {
+      background-color: #0d1117;
+      color: #c9d1d9;
+    }
+    ::selection {
+      background-color: #d97757;
+      color: white;
+    }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "react/": "https://esm.sh/react@^19.2.3/",
+      "react": "https://esm.sh/react@^19.2.3",
+      "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+      "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+      "recharts": "https://esm.sh/recharts@^3.6.0"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>
