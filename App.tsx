@@ -75,34 +75,35 @@ const App: React.FC = () => {
         // Testing Loop
         let passed = false;
         let iteration = 1;
-        const MAX_ITERATIONS = 3;
+        const MAX_ITERATIONS = 6; // Increased to allow for complex convergence
 
         while (!passed && iteration <= MAX_ITERATIONS) {
           setState(AppState.TESTING);
-          updateStep(AppState.TESTING, 'loading', `Verifying cycle ${iteration}...`);
-          addLog(`Booting Pyodide environment for iteration ${iteration}...`);
+          updateStep(AppState.TESTING, 'loading', `Verifying cycle ${iteration}/${MAX_ITERATIONS}...`);
+          addLog(`Executing Python runtime verification (Iter ${iteration})...`);
           
           const runResults = await executionService.runPython(result.code, result.tests);
           result.testResults = runResults;
           passed = runResults.passed;
 
           if (!passed) {
-            if (iteration === MAX_ITERATIONS) break;
+            if (iteration === MAX_ITERATIONS) {
+                console.error("Final Traceback:", runResults.logs);
+                throw new Error(`Autonomous agent failed to converge after ${MAX_ITERATIONS} iterations. Final Traceback: ${runResults.logs.slice(0, 200)}...`);
+            }
             
             setState(AppState.DEBUGGING);
-            updateStep(AppState.DEBUGGING, 'loading', `Debugging failure ${iteration}...`);
-            addLog(`Analyzing traceback: ${runResults.logs.split('\n').pop()}`);
+            updateStep(AppState.DEBUGGING, 'loading', `Self-correcting loop ${iteration}...`);
+            const lastError = runResults.logs.split('\n').filter(l => l.trim()).pop() || "Logic Error";
+            addLog(`Detected: ${lastError}`);
+            
             result = await geminiRef.current.refineImplementation(paperData, result, runResults.logs);
             result.iterationCount = iteration + 1;
             iteration++;
-            updateStep(AppState.DEBUGGING, 'success', `Fix applied for loop ${iteration-1}`);
+            updateStep(AppState.DEBUGGING, 'success', `Refined logic for cycle ${iteration}`);
           } else {
             updateStep(AppState.DEBUGGING, 'success', 'Logical parity achieved');
           }
-        }
-
-        if (!passed) {
-          throw new Error("Autonomous agent reached max iterations without convergence. Check logs for details.");
         }
 
         updateStep(AppState.TESTING, 'success', 'All verification tests passed');
@@ -114,6 +115,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       setError(err.message || 'Processing aborted due to unexpected error.');
       setState(AppState.ERROR);
+      updateStep(AppState.TESTING, 'error', 'Loop failed');
     }
   };
 
@@ -251,7 +253,9 @@ const App: React.FC = () => {
         {state === AppState.ERROR && (
           <div className="max-w-xl mx-auto mt-20 p-12 bg-white border border-github-black text-center space-y-6 shadow-[8px_8px_0px_0px_rgba(13,17,23,1)]">
             <h2 className="text-2xl font-bold uppercase tracking-tighter">System Error</h2>
-            <p className="text-github-black/60 font-medium">{error || "Critical failure in autonomous reasoning pipeline."}</p>
+            <p className="text-github-black/60 font-medium text-left bg-peach-100 p-4 border border-github-black/10 font-mono text-xs">
+              {error || "Critical failure in autonomous reasoning pipeline."}
+            </p>
             <button 
               onClick={() => setState(AppState.IDLE)}
               className="px-8 py-3 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs hover:invert transition-all"
