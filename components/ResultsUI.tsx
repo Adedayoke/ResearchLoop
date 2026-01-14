@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { PaperAnalysis, ImplementationResult } from '../types';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
@@ -10,13 +9,22 @@ interface ResultsUIProps {
 }
 
 const Markdown: React.FC<{ content: string; className?: string }> = ({ content, className = "" }) => {
-  // marked.parse can be synchronous
   const html = marked.parse(content) as string;
   return <div className={`markdown-body ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
 };
 
 const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
   const [activeTab, setActiveTab] = useState<'explainer' | 'code' | 'inspector' | 'evolution' | 'benchmarks'>('explainer');
+
+  // Prepare graph data with a starting baseline for better visualization
+  const graphData = [
+    { iteration: 0, matchScore: 0, label: 'Origin' },
+    ...implementation.history.map(h => ({
+      iteration: h.iteration,
+      matchScore: h.matchScore,
+      label: `Cycle ${h.iteration}`
+    }))
+  ];
 
   const handleExport = () => {
     const blob = new Blob([implementation.code], { type: 'text/plain' });
@@ -68,7 +76,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
         </div>
 
         <div className="p-12 md:p-16">
-          {/* Option A: Educational Explainer */}
+          {/* THE EXPLAINER */}
           {activeTab === 'explainer' && (
             <div className="space-y-20 animate-in fade-in slide-in-from-bottom-4">
               <div className="max-w-3xl space-y-8">
@@ -102,6 +110,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
             </div>
           )}
 
+          {/* IMPLEMENTATION */}
           {activeTab === 'code' && (
             <div className="space-y-12 animate-in fade-in">
               <div className="flex items-center justify-between border-b border-github-black/10 pb-8">
@@ -118,6 +127,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
             </div>
           )}
 
+          {/* RUNTIME INSPECTOR */}
           {activeTab === 'inspector' && (
             <div className="space-y-12 animate-in fade-in">
               <div className="max-w-2xl">
@@ -144,25 +154,37 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
             </div>
           )}
 
+          {/* AGENT JOURNEY (Fixed Contrast and Graph) */}
           {activeTab === 'evolution' && (
             <div className="space-y-12 animate-in fade-in">
-              {/* Option C: Animated Convergence Chart */}
               <div className="p-12 bg-peach-50 border border-github-black/5">
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-peach-accent mb-8">Autonomous Parity Convergence</h3>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={implementation.history}>
+                    <AreaChart data={graphData}>
                       <defs>
                         <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#d97757" stopOpacity={0.1}/>
+                          <stop offset="5%" stopColor="#d97757" stopOpacity={0.2}/>
                           <stop offset="95%" stopColor="#d97757" stopOpacity={0}/>
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="iteration" label={{ value: 'Cycle', position: 'insideBottom', offset: -5 }} hide />
+                      <XAxis dataKey="label" hide />
                       <YAxis domain={[0, 100]} hide />
-                      <Tooltip />
-                      <Area type="monotone" dataKey="matchScore" stroke="#d97757" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0d1117', border: 'none', color: '#f3f0e8', fontSize: '10px', fontWeight: 'bold' }}
+                        itemStyle={{ color: '#d97757' }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="matchScore" 
+                        stroke="#d97757" 
+                        strokeWidth={4} 
+                        fillOpacity={1} 
+                        fill="url(#colorScore)" 
+                        dot={{ r: 4, fill: '#d97757', strokeWidth: 2, stroke: '#fff' }}
+                        activeDot={{ r: 8, stroke: '#0d1117', strokeWidth: 2 }}
+                      />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -175,17 +197,21 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
 
               <div className="space-y-8">
                 {implementation.history?.map((v, i) => (
-                  <div key={i} className={`p-8 border border-github-black/10 flex flex-col lg:flex-row gap-12 transition-all hover:border-github-black ${i === implementation.history.length -1 ? 'bg-emerald-50/30 border-emerald-200' : ''}`}>
+                  <div key={i} className={`p-8 border border-github-black/10 flex flex-col lg:flex-row gap-12 transition-all hover:border-github-black group ${i === implementation.history.length -1 ? 'bg-emerald-50/30 border-emerald-200' : ''}`}>
                     <div className="w-24 shrink-0">
-                      <div className="text-4xl font-black opacity-10">0{v.iteration}</div>
-                      <div className="text-[9px] font-bold uppercase tracking-widest mt-2">{v.matchScore}% Match</div>
+                      <div className="text-4xl font-black opacity-10 group-hover:opacity-100 transition-opacity">0{v.iteration}</div>
+                      <div className="text-[9px] font-bold uppercase tracking-widest mt-2 text-peach-accent">{v.matchScore}% Match</div>
                     </div>
-                    <div className="flex-1 space-y-4">
-                      <Markdown content={v.explanation} className="font-bold tracking-tight text-lg" />
-                      {v.error && <pre className="p-4 bg-red-50 text-[10px] font-mono text-red-600 overflow-x-auto">TRACE: {v.error.split('\n').pop()}</pre>}
-                      <div className="bg-github-black p-4 text-[9px] font-mono text-github-text/20 h-24 overflow-hidden relative">
-                        <div className="absolute inset-0 bg-gradient-to-t from-github-black to-transparent"></div>
-                        {v.code.slice(0, 300)}...
+                    <div className="flex-1 space-y-6">
+                      <div className="flex items-center gap-3">
+                        <span className="px-2 py-0.5 bg-github-black text-peach-100 text-[8px] font-black uppercase tracking-tighter">System Check</span>
+                        <div className="h-[1px] flex-1 bg-github-black/5"></div>
+                      </div>
+                      <Markdown content={v.explanation} className="font-bold tracking-tight text-xl text-github-black" />
+                      {v.error && <pre className="p-6 bg-red-50 text-[11px] font-mono text-red-700 overflow-x-auto border-l-4 border-red-500 shadow-sm leading-relaxed">TRACEBACK RECOVERY: {v.error.split('\n').slice(-3).join('\n')}</pre>}
+                      <div className="bg-github-black p-6 text-[11px] font-mono text-github-text/70 h-32 overflow-hidden relative border border-github-border/50 group-hover:border-peach-accent/30 transition-colors">
+                        <div className="absolute inset-0 bg-gradient-to-t from-github-black via-transparent to-transparent z-10"></div>
+                        <pre className="relative z-0"><code>{v.code.slice(0, 400)}...</code></pre>
                       </div>
                     </div>
                   </div>
@@ -194,6 +220,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
             </div>
           )}
 
+          {/* BENCHMARK PARITY */}
           {activeTab === 'benchmarks' && (
             <div className="space-y-12 animate-in fade-in">
               <div className="h-[500px] w-full pt-10">
