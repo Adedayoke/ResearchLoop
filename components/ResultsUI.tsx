@@ -10,7 +10,7 @@ interface ResultsUIProps {
 
 const Markdown: React.FC<{ content: string; className?: string }> = ({ content, className = "" }) => {
   const html = marked.parse(content) as string;
-  return <div className={`markdown-body ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className={`markdown-body break-words ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
 };
 
 const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
@@ -117,7 +117,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
                 <h3 className="text-2xl font-bold uppercase tracking-tighter">Full Python Module</h3>
                 <span className="text-xs font-bold text-github-black/40">Dependencies: numpy</span>
               </div>
-              <div className="bg-github-black p-10 border border-github-border rounded-lg shadow-inner">
+              <div className="bg-github-black p-10 border border-github-border rounded-lg shadow-inner overflow-hidden">
                 <pre className="overflow-x-auto"><code className="font-mono text-sm text-github-text leading-relaxed">{implementation.code}</code></pre>
               </div>
               <div className="bg-peach-100 p-8 border border-github-black/5">
@@ -154,7 +154,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
             </div>
           )}
 
-          {/* AGENT JOURNEY (Fixed Contrast and Graph) */}
+          {/* AGENT JOURNEY */}
           {activeTab === 'evolution' && (
             <div className="space-y-12 animate-in fade-in">
               <div className="p-12 bg-peach-50 border border-github-black/5">
@@ -197,21 +197,26 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
 
               <div className="space-y-8">
                 {implementation.history?.map((v, i) => (
-                  <div key={i} className={`p-8 border border-github-black/10 flex flex-col lg:flex-row gap-12 transition-all hover:border-github-black group ${i === implementation.history.length -1 ? 'bg-emerald-50/30 border-emerald-200' : ''}`}>
+                  <div key={i} className={`p-8 border border-github-black/10 flex flex-col lg:flex-row gap-8 lg:gap-12 transition-all hover:border-github-black group ${i === implementation.history.length -1 ? 'bg-emerald-50/30 border-emerald-200' : ''}`}>
                     <div className="w-24 shrink-0">
                       <div className="text-4xl font-black opacity-10 group-hover:opacity-100 transition-opacity">0{v.iteration}</div>
                       <div className="text-[9px] font-bold uppercase tracking-widest mt-2 text-peach-accent">{v.matchScore}% Match</div>
                     </div>
-                    <div className="flex-1 space-y-6">
+                    <div className="flex-1 min-w-0 space-y-6">
                       <div className="flex items-center gap-3">
-                        <span className="px-2 py-0.5 bg-github-black text-peach-100 text-[8px] font-black uppercase tracking-tighter">System Check</span>
+                        <span className="px-2 py-0.5 bg-github-black text-peach-100 text-[8px] font-black uppercase tracking-tighter shrink-0">System Check</span>
                         <div className="h-[1px] flex-1 bg-github-black/5"></div>
                       </div>
-                      <Markdown content={v.explanation} className="font-bold tracking-tight text-xl text-github-black" />
-                      {v.error && <pre className="p-6 bg-red-50 text-[11px] font-mono text-red-700 overflow-x-auto border-l-4 border-red-500 shadow-sm leading-relaxed">TRACEBACK RECOVERY: {v.error.split('\n').slice(-3).join('\n')}</pre>}
+                      <Markdown content={v.explanation} className="font-bold tracking-tight text-xl text-github-black overflow-hidden" />
+                      {v.error && (
+                        <pre className="p-6 bg-red-50 text-[11px] font-mono text-red-700 overflow-x-auto border-l-4 border-red-500 shadow-sm leading-relaxed max-w-full break-all whitespace-pre-wrap">
+                          <span className="font-black uppercase text-[9px] mb-2 block tracking-widest opacity-50">Traceback Recovery:</span>
+                          {v.error.split('\n').slice(-5).join('\n')}
+                        </pre>
+                      )}
                       <div className="bg-github-black p-6 text-[11px] font-mono text-github-text/70 h-32 overflow-hidden relative border border-github-border/50 group-hover:border-peach-accent/30 transition-colors">
                         <div className="absolute inset-0 bg-gradient-to-t from-github-black via-transparent to-transparent z-10"></div>
-                        <pre className="relative z-0"><code>{v.code.slice(0, 400)}...</code></pre>
+                        <pre className="relative z-0 overflow-x-auto"><code>{v.code.slice(0, 400)}...</code></pre>
                       </div>
                     </div>
                   </div>
