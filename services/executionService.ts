@@ -14,10 +14,8 @@ export class ExecutionService {
         indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/"
       });
       
-      // Pre-load common scientific packages used in research
       await this.pyodide.loadPackage(['numpy', 'micropip']);
-      
-      console.log("Pyodide initialized with scientific stack.");
+      console.log("Pyodide initialized.");
     } catch (err) {
       console.error("Pyodide init failed:", err);
       throw err;
@@ -26,18 +24,20 @@ export class ExecutionService {
     }
   }
 
-  async runPython(code: string, tests: string): Promise<{ passed: boolean; logs: string }> {
+  async runPython(code: string, tests: string): Promise<{ passed: boolean; logs: string; variables?: any[] }> {
     await this.init();
     
     let logs = "";
     this.pyodide.setStdout({ batched: (str: string) => { logs += str + "\n"; } });
     this.pyodide.setStderr({ batched: (str: string) => { logs += str + "\n"; } });
 
-    // Ensure common imports are present if the model forgot them
     const fullCode = `
 import sys
 import io
 import numpy as np
+import json
+
+_VARS_BEFORE = set(globals().keys())
 
 # User implementation
 try:
@@ -57,14 +57,39 @@ except Exception as e:
     print("TEST_FAILURE:")
     print(traceback.format_exc())
     print("TESTS_FAILED")
+
+# Variable Inspection
+_VARS_AFTER = set(globals().keys())
+_NEW_VARS = _VARS_AFTER - _VARS_BEFORE - {'_VARS_BEFORE', '_VARS_AFTER', 'json', 'np', 'sys', 'io', 'fullCode'}
+inspect_data = []
+for var_name in _NEW_VARS:
+    if var_name.startswith('_'): continue
+    val = globals()[var_name]
+    try:
+        t = type(val).__name__
+        v_str = str(val)
+        if len(v_str) > 100: v_str = v_str[:97] + "..."
+        inspect_data.append({"name": var_name, "type": t, "value": v_str})
+    except:
+        pass
+print("INSPECTOR_DATA:" + json.dumps(inspect_data))
 `;
 
     try {
       await this.pyodide.runPythonAsync(fullCode);
       const passed = logs.includes("ALL_TESTS_PASSED") && !logs.includes("IMPLEMENTATION_ERROR");
+      
+      let variables: any[] = [];
+      const inspectorMatch = logs.match(/INSPECTOR_DATA:(.*)/);
+      if (inspectorMatch) {
+        try { variables = JSON.parse(inspectorMatch[1]); } catch(e) {}
+      }
+
       return { 
         passed, 
-        logs: logs.replace("ALL_TESTS_PASSED", "")
+        variables,
+        logs: logs.replace(/INSPECTOR_DATA:.*\n?/, "")
+                  .replace("ALL_TESTS_PASSED", "")
                   .replace("TESTS_FAILED", "")
                   .replace("RUNNING_TESTS...", "")
                   .trim() 

@@ -24,6 +24,26 @@ export interface PaperAnalysis {
   }[];
 }
 
+export interface CodeVersion {
+  iteration: number;
+  code: string;
+  error?: string;
+  explanation: string;
+  matchScore: number;
+}
+
+export interface EquationMapping {
+  theory: string;
+  codeSnippet: string;
+  explanation: string;
+}
+
+export interface VariableState {
+  name: string;
+  type: string;
+  value: string;
+}
+
 export interface ImplementationResult {
   code: string;
   explanation: string;
@@ -31,8 +51,11 @@ export interface ImplementationResult {
   testResults: {
     passed: boolean;
     logs: string;
+    variables?: VariableState[];
   };
   iterationCount: number;
+  history: CodeVersion[];
+  equationMappings: EquationMapping[];
   finalBenchmarkComparison: {
     name: string;
     paperValue: number;
