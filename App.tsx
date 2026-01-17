@@ -22,11 +22,23 @@ const App: React.FC = () => {
 
   const geminiRef = useRef(new GeminiService());
 
+  // Comprehensive detection for Google AI Studio environments
+  const isStudio = 
+    window.location.hostname.includes('aistudio.google.com') || 
+    window.location.hostname.includes('web-highlight') ||
+    window.location.href.includes('preview') ||
+    window.location.hostname.includes('localhost'); // Helpful for local testing with the same logic
+
   useEffect(() => {
     executionService.init().catch(console.error);
     const saved = JSON.parse(localStorage.getItem('research_loop_saved') || '[]');
     setSavedProjects(saved);
-  }, []);
+
+    // Auto-enable Pro in Studio since keys are provided
+    if (isStudio) {
+      setIsPro(true);
+    }
+  }, [isStudio]);
 
   const updateStep = (id: AppState, status: StepStatus['status'], message?: string) => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, message } : s));
@@ -34,9 +46,11 @@ const App: React.FC = () => {
 
   const handleProToggle = async () => {
     if (!isPro) {
-      const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        await (window as any).aistudio.openSelectKey();
+      if (!isStudio) {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+          await (window as any).aistudio.openSelectKey();
+        }
       }
       setIsPro(true);
     } else {
@@ -51,6 +65,7 @@ const App: React.FC = () => {
     setState(AppState.ANALYZING);
     setError(null);
     setImplementation(null);
+    setSteps(STEPS.map(s => ({ ...s, id: s.id as AppState, status: 'pending' })));
     updateStep(AppState.ANALYZING, 'loading');
 
     try {
@@ -58,14 +73,14 @@ const App: React.FC = () => {
       reader.onload = async (event) => {
         const base64 = (event.target?.result as string).split(',')[1];
         
-        setCurrentLog(isPro ? "Web-grounding theoretical foundation..." : "Extracting algorithm structure...");
+        setCurrentLog(isPro ? "Using Pro Reasoning for deep analysis..." : "Analyzing algorithm structure...");
         const paperData = await geminiRef.current.analyzePaper(base64, isPro);
         setAnalysis(paperData);
         updateStep(AppState.ANALYZING, 'success');
         
         setState(AppState.IMPLEMENTING);
         updateStep(AppState.IMPLEMENTING, 'loading');
-        setCurrentLog("Synthesizing initial implementation layer...");
+        setCurrentLog("Synthesizing research into runnable Python code...");
         let result = await geminiRef.current.generateInitialImplementation(paperData, isPro);
         updateStep(AppState.IMPLEMENTING, 'success');
 
@@ -76,7 +91,7 @@ const App: React.FC = () => {
         while (!passed && iteration <= 8) {
           setState(AppState.TESTING);
           updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}`);
-          setCurrentLog(`Testing parity in WASM sandbox (Iter ${iteration})...`);
+          setCurrentLog(`Sandbox: Testing logic stability (Iteration ${iteration})...`);
           
           const runResults = await executionService.runPython(result.code, result.tests);
           result.testResults = runResults;
@@ -87,17 +102,14 @@ const App: React.FC = () => {
             code: result.code,
             explanation: result.explanation,
             error: passed ? undefined : runResults.logs,
-            stabilityScore: passed ? 100 : 20 + (iteration * 8)
+            stabilityScore: passed ? 100 : Math.min(95, 20 + (iteration * 10))
           });
 
           if (!passed) {
-            if (iteration === 8) {
-              setCurrentLog("Max iterations reached. Proceeding with last stable hypothesis.");
-              break; 
-            }
+            if (iteration === 8) break;
             setState(AppState.DEBUGGING);
-            updateStep(AppState.DEBUGGING, 'loading', `Repair cycle ${iteration}`);
-            setCurrentLog(`Agent performing diagnostic repair on traceback...`);
+            updateStep(AppState.DEBUGGING, 'loading', `Refining cycle ${iteration}`);
+            setCurrentLog(`Agent: Repairing code via diagnostic feedback...`);
             const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
             result = { ...result, ...refined, iterationCount: iteration + 1 };
             iteration++;
@@ -109,12 +121,21 @@ const App: React.FC = () => {
         if (isPro) {
           setState(AppState.VISUALIZING);
           updateStep(AppState.COMPLETED, 'loading');
-          setCurrentLog("Generating high-fidelity architecture visualization...");
-          result.architectureImage = await geminiRef.current.generateArchitectureDiagram(paperData);
+          setCurrentLog("Synthesizing technical architecture imagery...");
+          try {
+            const img = await geminiRef.current.generateArchitectureDiagram(paperData);
+            if (img) result.architectureImage = img;
+          } catch (imgErr) {
+            console.warn("Visualizer failed", imgErr);
+          }
           
           setState(AppState.VOCALIZING);
-          setCurrentLog("Encoding vocal explanation layer...");
-          result.audioData = await geminiRef.current.generateVocalExplanation(result);
+          setCurrentLog("Generating audio theory map...");
+          try {
+            result.audioData = await geminiRef.current.generateVocalExplanation(result);
+          } catch (audErr) {
+            console.warn("Vocalizer failed", audErr);
+          }
         }
 
         setState(AppState.COMPLETED);
@@ -123,20 +144,19 @@ const App: React.FC = () => {
         updateStep(AppState.COMPLETED, 'success');
         setImplementation(result);
 
-        const newSaved = [{ title: paperData.title, timestamp: Date.now(), isPro }, ...savedProjects.slice(0, 4)];
+        const newSaved = [{ title: paperData.title, timestamp: Date.now(), isPro }, ...savedProjects.slice(0, 9)];
         localStorage.setItem('research_loop_saved', JSON.stringify(newSaved));
         setSavedProjects(newSaved);
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      setError(err.message || "Autonomous loop was interrupted.");
+      setError(err.message || "Autonomous loop failed.");
       setState(AppState.ERROR);
     }
   };
 
   return (
     <div className="min-h-screen bg-peach-100 text-github-black font-sans selection:bg-peach-accent selection:text-white relative">
-      {/* Overlays */}
       {activeOverlay && (
         <div className="fixed inset-0 z-[100] bg-peach-100 p-8 md:p-20 overflow-y-auto animate-in fade-in duration-300">
           <button onClick={() => setActiveOverlay(null)} className="fixed top-8 right-8 w-12 h-12 border border-github-black flex items-center justify-center font-bold hover:bg-github-black hover:text-peach-100 transition-all z-[110]">✕</button>
@@ -171,7 +191,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-peach-100/80 backdrop-blur-md border-b border-github-black/10 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setState(AppState.IDLE)}>
@@ -180,7 +199,7 @@ const App: React.FC = () => {
           </div>
           <nav className="hidden md:flex items-center gap-6">
             <button onClick={handleProToggle} className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest border transition-all ${isPro ? 'bg-peach-accent border-peach-accent text-white' : 'border-github-black text-github-black hover:bg-github-black hover:text-white'}`}>
-              {isPro ? 'Pro Active (Gemini 3 Pro)' : 'Upgrade to Pro'}
+              {isPro ? `Tier: Pro ${isStudio ? '(Studio)' : '(External)'}` : 'Upgrade to Pro'}
             </button>
             <button onClick={() => setActiveOverlay('manifesto')} className="text-[10px] font-bold uppercase tracking-widest hover:text-peach-accent transition-colors">Manifesto</button>
             <button onClick={() => setActiveOverlay('archive')} className="text-[10px] font-bold uppercase tracking-widest hover:text-peach-accent transition-colors">Archive</button>
@@ -196,7 +215,7 @@ const App: React.FC = () => {
                 Automate the <span className="font-light not-italic">Bridge</span>.
               </h1>
               <p className="text-xl md:text-2xl text-github-black/60 font-medium max-w-2xl leading-snug">
-                ResearchLoop reads PDFs, extracts core methodology, and iterates until implementation is verified structurally in a WASM sandbox.
+                Autonomous Paper Implementation. {isStudio ? "Studio environment detected: Pro tier enabled." : "Standard Loop active."}
               </p>
             </div>
 
@@ -208,7 +227,7 @@ const App: React.FC = () => {
                   <div className="w-20 h-20 bg-peach-100 border border-github-black flex items-center justify-center"><Icons.Upload /></div>
                   <div className="text-center">
                     <p className="text-2xl font-bold uppercase tracking-tight">Drop PDF to start {isPro ? 'Pro' : 'Standard'} loop</p>
-                    <p className="text-github-black/40 text-sm mt-2 font-medium">Verification powered by {isPro ? 'Gemini 3 Pro + Search' : 'Gemini 3 Flash'}</p>
+                    <p className="text-github-black/40 text-sm mt-2 font-medium">Powered by {isPro ? 'Gemini 3 Pro' : 'Gemini 3 Flash'}</p>
                   </div>
                 </div>
               </div>
@@ -227,10 +246,13 @@ const App: React.FC = () => {
         {state === AppState.ERROR && (
           <div className="max-w-2xl mx-auto mt-20 space-y-8">
             <div className="bg-white border border-github-black p-12 text-center space-y-6 shadow-[12px_12px_0px_0px_#0d1117]">
-              <h2 className="text-2xl font-bold uppercase tracking-tighter">Loop Terminated</h2>
+              <h2 className="text-2xl font-bold uppercase tracking-tighter text-red-600">Loop Collision</h2>
               <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">{error}</div>
               <div className="flex gap-4">
-                 <button onClick={() => setState(AppState.IDLE)} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">New Paper</button>
+                 <button onClick={() => setState(AppState.IDLE)} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">Reset Loop</button>
+                 {!isStudio && error?.includes('API_KEY_ERROR') && (
+                   <button onClick={handleProToggle} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs">Update API Key</button>
+                 )}
               </div>
             </div>
           </div>

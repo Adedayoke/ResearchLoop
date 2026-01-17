@@ -4,14 +4,18 @@ import { PaperAnalysis, ImplementationResult } from "../types";
 
 export class GeminiService {
   private getClient() {
-    const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : (window as any).process?.env?.API_KEY;
+    // Priority: system process.env -> window.process.env -> empty string
+    const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) 
+      ? process.env.API_KEY 
+      : (window as any).process?.env?.API_KEY;
+    
     return new GoogleGenAI({ apiKey: apiKey || '' });
   }
 
   private handleError(error: any) {
     console.error("Gemini API Error:", error);
-    if (error?.message?.includes('Requested entity was not found')) {
-      throw new Error("API_KEY_ERROR: Invalid project or API key.");
+    if (error?.message?.includes('Requested entity was not found') || error?.message?.includes('API_KEY_INVALID')) {
+      throw new Error("API_KEY_ERROR: A valid paid API key is required for Pro features. Please check your billing at ai.google.dev/gemini-api/docs/billing.");
     }
     throw new Error(error?.message || "An unexpected error occurred during reasoning.");
   }
@@ -27,10 +31,11 @@ export class GeminiService {
         contents: {
           parts: [
             { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-            { text: "Analyze this research paper. Extract the title, authors, summary, methodology, and a list of key architectural features. Focus on extracting mathematical constants and algorithm layers. Output JSON." }
+            { text: "Analyze this research paper. IMPORTANT: The 'title' field must contain ONLY the headline. REMOVE authors and metadata. Extract methodology. Output JSON." }
           ]
         },
         config: {
+          systemInstruction: "You are a research engineer. Extract logic and return a clean, metadata-free paper title.",
           thinkingConfig: { thinkingBudget: isPro ? 12000 : 4000 },
           responseMimeType: "application/json",
           tools,
@@ -77,12 +82,7 @@ export class GeminiService {
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
     
-    const prompt = `Act as a Senior Research Engineer. Implement "${analysis.title}" in Python 3.10 + NumPy.
-STRATEGY:
-1. Translate methodology into a class-based structure.
-2. Use explicit shape checks and NumPy broadcasting.
-3. Provide a 'tests' script that exercises the core algorithm.
-Output JSON with: code, explanation, tests, structuralParity, equationMappings.`;
+    const prompt = `Implement "${analysis.title}" in Python 3.10 + NumPy. Translate abstract methodology into classes. Use shape assertions. Provide unit tests. Output JSON.`;
 
     try {
       const response = await ai.models.generateContent({
@@ -141,22 +141,42 @@ Output JSON with: code, explanation, tests, structuralParity, equationMappings.`
   async generateArchitectureDiagram(analysis: PaperAnalysis): Promise<string> {
     const ai = this.getClient();
     try {
+      // gemini-3-pro-image-preview for high-quality architectural schema
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: {
-          parts: [{ text: `Architectural blueprint for the research paper: ${analysis.title}. Technical schematic showing data flow, neural layers, and mathematical blocks. Minimalist professional style, white background, peach accents.` }],
+          parts: [{ text: `A clean, high-fidelity technical architecture blueprint for: ${analysis.title}. Professional engineering schematic showing modular components and data flow. Modern tech aesthetic, white background, peach accents. 2K resolution.` }],
         },
         config: { 
-          imageConfig: { aspectRatio: "16:9", imageSize: "1K" },
-          tools: [{googleSearch: {}}]
+          imageConfig: { aspectRatio: "16:9", imageSize: "2K" },
+          // Fix: Use 'googleSearch' instead of 'google_search' as 'google_search' is not a valid property in ToolUnion.
+          tools: [{googleSearch: {}}] 
         },
       });
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+      
+      const parts = response.candidates?.[0]?.content?.parts;
+      if (parts) {
+        // Iterate through all parts as model might return text AND image
+        for (const part of parts) {
+          if (part.inlineData) {
+            return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+          }
+        }
       }
       return '';
     } catch (e) {
-      return '';
+      console.error("Visualizer Error:", e);
+      // Fallback to simpler model if Pro fails or is restricted in the environment
+      try {
+        const fallback = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: { parts: [{ text: `Architecture diagram for ${analysis.title}` }] }
+        });
+        const part = fallback.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+        return part ? `data:image/png;base64,${part.inlineData?.data}` : '';
+      } catch (fErr) {
+        return '';
+      }
     }
   }
 
@@ -165,10 +185,15 @@ Output JSON with: code, explanation, tests, structuralParity, equationMappings.`
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Explain the technical implementation logic of this research methodology: ${implementation.explanation.slice(0, 400)}` }] }],
+        contents: [{ parts: [{ text: `Explain this implementation: ${implementation.explanation.slice(0, 500)}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+          // Fix: Wrap 'voiceName' inside 'prebuiltVoiceConfig' as per the latest SDK guidelines.
+          speechConfig: { 
+            voiceConfig: { 
+              prebuiltVoiceConfig: { voiceName: 'Kore' } 
+            } 
+          },
         },
       });
       return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || '';
@@ -181,19 +206,7 @@ Output JSON with: code, explanation, tests, structuralParity, equationMappings.`
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
     
-    const prompt = `CRITICAL REPAIR REQUIRED for "${analysis.title}".
-
-TRACEBACK OF FAILURE:
-${errorLogs}
-
-PREVIOUS CODE:
-${currentResult.code}
-
-INSTRUCTIONS:
-1. DIAGNOSE: Explicitly identify the root cause (e.g., NumPy dimension mismatch).
-2. REPAIR: Rewrite the Python code and tests to fix the error.
-3. CONVERGE: Ensure the code still implements the paper's math correctly.
-Output JSON with fields: code, explanation, tests.`;
+    const prompt = `REPAIR Logic for "${analysis.title}". Traceback: ${errorLogs}. Fix the implementation while maintaining paper math.`;
 
     try {
       const response = await ai.models.generateContent({
