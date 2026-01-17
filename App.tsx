@@ -54,6 +54,7 @@ const App: React.FC = () => {
     const aistudio = (window as any).aistudio;
     
     if (aistudio && typeof aistudio.openSelectKey === 'function') {
+      // AI Studio: Use native key selection dialog
       try {
         await aistudio.openSelectKey();
         // Mandatory guideline: assume key selection was successful and proceed.
@@ -62,8 +63,32 @@ const App: React.FC = () => {
         console.error("Key selection dialog failed to open", err);
       }
     } else {
-      // Toggle locally for non-studio environments (like Vercel)
-      setIsPro(!isPro);
+      // External deployment (Vercel, etc): Prompt for API key
+      if (!isPro) {
+        const apiKey = prompt(
+          'Enter your Gemini API Key for Pro features:\n' +
+          'Get your key at: https://aistudio.google.com/apikey\n\n' +
+          'Note: Pro features require a paid API key with billing enabled.'
+        );
+        
+        if (apiKey && apiKey.trim()) {
+          // Store API key in environment
+          (window as any).process = (window as any).process || {};
+          (window as any).process.env = (window as any).process.env || {};
+          (window as any).process.env.API_KEY = apiKey.trim();
+          
+          setIsPro(true);
+          console.log('[Pro Enabled] Using user-provided API key');
+        } else {
+          alert('API key required for Pro features');
+        }
+      } else {
+        // Disable Pro mode and clear key
+        if ((window as any).process?.env?.API_KEY) {
+          delete (window as any).process.env.API_KEY;
+        }
+        setIsPro(false);
+      }
     }
   };
 
