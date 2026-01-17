@@ -36,7 +36,7 @@ export interface CodeVersion {
   code: string;
   error?: string;
   explanation: string;
-  stabilityScore: number; // 0-100 based on test success/complexity
+  stabilityScore: number;
 }
 
 export interface EquationMapping {
@@ -56,6 +56,11 @@ export interface StructuralPoint {
   paperClaim: string;
   implementationDetail: string;
   status: 'Verified' | 'Partial' | 'Conceptual';
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
 }
 
 export interface ImplementationResult {
