@@ -11,12 +11,9 @@ export class GeminiService {
   private handleError(error: any) {
     console.error("Gemini API Error:", error);
     if (error?.message?.includes('Requested entity was not found')) {
-      throw new Error("API_KEY_ERROR: Invalid project or API key. Please re-select a paid API key via the Pro toggle.");
+      throw new Error("API_KEY_ERROR: Invalid project or API key.");
     }
-    if (error?.status === 429 || error?.message?.includes('429')) {
-      throw new Error("QUOTA_LIMIT: Rate limit reached. The Pro Tier (Gemini 3 Pro) has stricter limits on free keys. Please try again in 60s.");
-    }
-    throw new Error(error?.message || "An unexpected error occurred during reasoning.");
+    throw new Error(error?.message || "An unexpected error occurred.");
   }
 
   async analyzePaper(pdfBase64: string, isPro: boolean): Promise<PaperAnalysis> {
@@ -30,7 +27,7 @@ export class GeminiService {
         contents: {
           parts: [
             { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-            { text: "Perform deep multimodal analysis. Extract primary algorithm, LaTeX equations, and benchmarks. If tools are available, search for real-world implementations to verify mathematical constants or hidden hyperparameters. Output JSON." }
+            { text: "Analyze this paper. Extract title, authors, summary, methodology, and a list of key architectural benchmarks/features. Output JSON." }
           ]
         },
         config: {
@@ -51,10 +48,8 @@ export class GeminiService {
                   type: Type.OBJECT,
                   properties: {
                     name: { type: Type.STRING },
-                    score: { type: Type.NUMBER },
-                    unit: { type: Type.STRING }
-                  },
-                  required: ["name", "score", "unit"]
+                    description: { type: Type.STRING }
+                  }
                 }
               }
             }
@@ -82,14 +77,9 @@ export class GeminiService {
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
     
-    const prompt = `Act as a world-class Senior Research Engineer. 
-Implement the core logic of "${analysis.title}" using ONLY Python 3.10 and NumPy. 
-STRICT REQUIREMENTS:
-1. Ensure all mathematical operations match the paper methodology.
-2. Use explicit NumPy broadcasting to avoid shape errors.
-3. Include internal validation checks (asserts) for matrix dimensions.
-4. The code must be self-contained (no external data files).
-5. Output the 'tests' field as a runnable script that verifies the implementation logic against common edge cases.
+    const prompt = `Implement "${analysis.title}" in Python 3.10 with NumPy. 
+Focus on mathematical structural parity.
+In 'structuralParity', describe how the code maps to specific paper claims.
 Output JSON.`;
 
     try {
@@ -105,7 +95,18 @@ Output JSON.`;
               code: { type: Type.STRING },
               explanation: { type: Type.STRING },
               tests: { type: Type.STRING },
-              matchScore: { type: Type.NUMBER },
+              structuralParity: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    feature: { type: Type.STRING },
+                    paperClaim: { type: Type.STRING },
+                    implementationDetail: { type: Type.STRING },
+                    status: { type: Type.STRING, enum: ['Verified', 'Partial', 'Conceptual'] }
+                  }
+                }
+              },
               equationMappings: {
                 type: Type.ARRAY,
                 items: {
@@ -127,12 +128,7 @@ Output JSON.`;
         ...result,
         testResults: { passed: false, logs: "" },
         iterationCount: 1,
-        history: [],
-        finalBenchmarkComparison: analysis.benchmarks.map(b => ({
-          name: b.name,
-          paperValue: b.score,
-          implValue: b.score * (0.95 + Math.random() * 0.04) 
-        }))
+        history: []
       };
     } catch (e) {
       this.handleError(e);
@@ -146,7 +142,7 @@ Output JSON.`;
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: {
-          parts: [{ text: `A clean, professional scientific architecture diagram for ${analysis.title}. Neural network layers, flow arrows, high-quality technical visualization, white background, peach and dark-blue palette.` }],
+          parts: [{ text: `High-resolution technical architecture diagram for the research paper: ${analysis.title}. Schematic diagram showing logic blocks, data flow, and layers. 16:9 aspect ratio, clean white background, professional engineering style.` }],
         },
         config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
       });
@@ -155,7 +151,6 @@ Output JSON.`;
       }
       return '';
     } catch (e) {
-      console.error("Image Gen Error", e);
       return '';
     }
   }
@@ -165,7 +160,7 @@ Output JSON.`;
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `In a professional, clear voice, explain how this implementation maps to the research equations: ${implementation.explanation.slice(0, 500)}` }] }],
+        contents: [{ parts: [{ text: `Briefly explain the structural verification of this algorithm: ${implementation.explanation.slice(0, 400)}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -173,7 +168,6 @@ Output JSON.`;
       });
       return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || '';
     } catch (e) {
-      console.error("TTS Error", e);
       return '';
     }
   }
@@ -181,21 +175,7 @@ Output JSON.`;
   async refineImplementation(analysis: PaperAnalysis, currentResult: ImplementationResult, errorLogs: string, isPro: boolean): Promise<any> {
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
-    
-    const prompt = `CRITICAL REPAIR REQUIRED. 
-The previous Python implementation for "${analysis.title}" failed during runtime.
-RUNTIME LOGS:
-${errorLogs}
-
-PREVIOUS CODE:
-${currentResult.code}
-
-YOUR TASK:
-1. Analyze the traceback carefully. 
-2. Identify the root cause (e.g., NumPy dimension mismatch, missing initialization, or incorrect equation translation).
-3. Provide a fixed version of the code and tests. 
-4. Explain the fix concisely.
-Output JSON.`;
+    const prompt = `REPAIR LOGIC. Traceback: ${errorLogs}. Fix dimensions and broadcasting. Output JSON.`;
 
     try {
       const response = await ai.models.generateContent({
@@ -203,16 +183,7 @@ Output JSON.`;
         contents: prompt,
         config: {
           thinkingConfig: { thinkingBudget: isPro ? 32768 : 24576 },
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              code: { type: Type.STRING },
-              explanation: { type: Type.STRING },
-              tests: { type: Type.STRING },
-              matchScore: { type: Type.NUMBER }
-            }
-          }
+          responseMimeType: "application/json"
         }
       });
       return JSON.parse(response.text || '{}');

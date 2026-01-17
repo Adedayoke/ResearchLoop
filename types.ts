@@ -26,8 +26,7 @@ export interface PaperAnalysis {
   metrics: string[];
   benchmarks: {
     name: string;
-    score: number;
-    unit: string;
+    description: string;
   }[];
   groundingSources?: GroundingSource[];
 }
@@ -37,7 +36,7 @@ export interface CodeVersion {
   code: string;
   error?: string;
   explanation: string;
-  matchScore: number;
+  stabilityScore: number; // 0-100 based on test success/complexity
 }
 
 export interface EquationMapping {
@@ -52,6 +51,13 @@ export interface VariableState {
   value: string;
 }
 
+export interface StructuralPoint {
+  feature: string;
+  paperClaim: string;
+  implementationDetail: string;
+  status: 'Verified' | 'Partial' | 'Conceptual';
+}
+
 export interface ImplementationResult {
   code: string;
   explanation: string;
@@ -64,11 +70,7 @@ export interface ImplementationResult {
   iterationCount: number;
   history: CodeVersion[];
   equationMappings: EquationMapping[];
-  finalBenchmarkComparison: {
-    name: string;
-    paperValue: number;
-    implValue: number;
-  }[];
+  structuralParity: StructuralPoint[];
   architectureImage?: string;
   audioData?: string;
 }

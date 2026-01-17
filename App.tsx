@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AppState, StepStatus, PaperAnalysis, ImplementationResult, CodeVersion } from './types';
 import { STEPS, Icons } from './constants';
 import { GeminiService } from './services/geminiService';
@@ -32,8 +32,6 @@ const App: React.FC = () => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, message } : s));
   };
 
-  const addLog = (msg: string) => setCurrentLog(msg);
-
   const handleProToggle = async () => {
     if (!isPro) {
       const hasKey = await (window as any).aistudio.hasSelectedApiKey();
@@ -52,31 +50,31 @@ const App: React.FC = () => {
 
     setState(AppState.ANALYZING);
     setError(null);
-    updateStep(AppState.ANALYZING, 'loading', isPro ? 'Pro Analysis with Web Grounding...' : 'Analyzing paper structure...');
+    updateStep(AppState.ANALYZING, 'loading', isPro ? 'Pro Grounding...' : 'Analyzing paper...');
 
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64 = (event.target?.result as string).split(',')[1];
         
-        addLog(isPro ? "Grounding theoretical methodology against Google Search..." : "Analyzing theoretical methodology...");
+        setCurrentLog(isPro ? "Web-grounding theory..." : "Extracting equations...");
         const paperData = await geminiRef.current.analyzePaper(base64, isPro);
         setAnalysis(paperData);
-        updateStep(AppState.ANALYZING, 'success', paperData.title);
+        updateStep(AppState.ANALYZING, 'success');
         
         setState(AppState.IMPLEMENTING);
         updateStep(AppState.IMPLEMENTING, 'loading', 'Synthesizing implementation...');
         let result = await geminiRef.current.generateInitialImplementation(paperData, isPro);
-        updateStep(AppState.IMPLEMENTING, 'success', 'Base logic generated');
+        updateStep(AppState.IMPLEMENTING, 'success');
 
         let passed = false;
         let iteration = 1;
         const history: CodeVersion[] = [];
 
-        while (!passed && iteration <= 8) { // Increased iterations to 8 for better convergence
+        while (!passed && iteration <= 8) {
           setState(AppState.TESTING);
-          updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}...`);
-          addLog(`Iteration ${iteration}: Verifying logical parity in WASM...`);
+          updateStep(AppState.TESTING, 'loading', `Testing iter ${iteration}...`);
+          setCurrentLog(`Verifying structural parity (Iteration ${iteration})...`);
           
           const runResults = await executionService.runPython(result.code, result.tests);
           result.testResults = runResults;
@@ -87,18 +85,17 @@ const App: React.FC = () => {
             code: result.code,
             explanation: result.explanation,
             error: passed ? undefined : runResults.logs,
-            matchScore: (result as any).matchScore || (passed ? 99.9 : 50 + iteration * 5)
+            stabilityScore: passed ? 100 : 20 + (iteration * 10)
           });
 
           if (!passed) {
             if (iteration === 8) {
-              // Final attempt failed, but we show the results anyway to let user see where it got
               setImplementation({ ...result, history });
-              throw new Error("Maximum autonomous iterations reached (8/8). The system could not converge on a valid implementation. Review the Inspector for the final traceback.");
+              throw new Error("Max iterations reached. Could not converge on structural parity.");
             }
             setState(AppState.DEBUGGING);
-            updateStep(AppState.DEBUGGING, 'loading', `Cycle ${iteration}...`);
-            addLog(`Repairing logic using traceback feedback...`);
+            updateStep(AppState.DEBUGGING, 'loading', `Debugging...`);
+            setCurrentLog(`Repairing logic...`);
             const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
             result = { ...result, ...refined, iterationCount: iteration + 1 };
             iteration++;
@@ -110,16 +107,16 @@ const App: React.FC = () => {
         if (isPro) {
           setState(AppState.VISUALIZING);
           updateStep(AppState.COMPLETED, 'loading', 'Visualizing architecture...');
-          addLog("Generating AI Architecture Diagram...");
+          setCurrentLog("Generating AI Architecture Diagram...");
           result.architectureImage = await geminiRef.current.generateArchitectureDiagram(paperData);
           
           setState(AppState.VOCALIZING);
-          addLog("Synthesizing Vocal Engineer Explanation...");
+          setCurrentLog("Synthesizing Vocal Engineer Explanation...");
           result.audioData = await geminiRef.current.generateVocalExplanation(result);
         }
 
         setState(AppState.COMPLETED);
-        updateStep(AppState.COMPLETED, 'success', 'Verification complete');
+        updateStep(AppState.COMPLETED, 'success');
         setImplementation(result);
 
         const newSaved = [{ title: paperData.title, timestamp: Date.now(), isPro }, ...savedProjects.slice(0, 4)];
@@ -128,8 +125,7 @@ const App: React.FC = () => {
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      if (err.message.includes("API_KEY_ERROR")) setIsPro(false);
-      setError(err.message || "Autonomous loop interrupted by critical failure.");
+      setError(err.message || "Autonomous loop failed.");
       setState(AppState.ERROR);
     }
   };
@@ -153,7 +149,7 @@ const App: React.FC = () => {
               <div className="space-y-12">
                 <h2 className="text-6xl md:text-8xl font-medium tracking-tight uppercase leading-none">THE ARCHIVE</h2>
                 <div className="border border-github-black divide-y divide-github-black">
-                  {savedProjects.length > 0 ? savedProjects.map((p, i) => (
+                  {savedProjects.map((p, i) => (
                     <div key={i} className="p-8 hover:bg-white transition-colors flex justify-between items-center">
                       <div className="flex items-center gap-3">
                         <span className="text-xl font-bold uppercase tracking-tight">{p.title}</span>
@@ -161,9 +157,7 @@ const App: React.FC = () => {
                       </div>
                       <span className="text-[10px] font-black uppercase tracking-widest opacity-30">Verified {new Date(p.timestamp).toLocaleDateString()}</span>
                     </div>
-                  )) : (
-                    <div className="p-20 text-center text-[10px] font-black uppercase opacity-20">No archived loops found</div>
-                  )}
+                  ))}
                 </div>
               </div>
             )}
@@ -196,7 +190,7 @@ const App: React.FC = () => {
                 Automate the <span className="font-light not-italic">Bridge</span>.
               </h1>
               <p className="text-xl md:text-2xl text-github-black/60 font-medium max-w-2xl leading-snug">
-                ResearchLoop reads PDFs, extracts core methodology, and iterates until implementation is verified.
+                ResearchLoop reads PDFs, extracts core methodology, and iterates until implementation is verified structurally.
               </p>
             </div>
 
@@ -213,19 +207,6 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-12 pt-12 border-t border-github-black/10">
-              {[
-                { title: 'In-Browser Runtime', desc: 'Real Python execution using Pyodide (WASM) for verification.' },
-                { title: isPro ? 'Web Grounding (PRO)' : 'Self-Correction', desc: isPro ? 'Validates logic against web sources and official repos.' : 'Gemini-driven debugging loops that fix traceback errors.' },
-                { title: isPro ? 'Vocal & Visual (PRO)' : 'Theory Mapping', desc: isPro ? 'AI-generated architecture diagrams and vocal explanations.' : 'Automatic linkage between equations and code sections.' }
-              ].map((item, i) => (
-                <div key={i} className="space-y-3">
-                  <h3 className="text-sm font-black uppercase tracking-widest text-peach-accent">{item.title}</h3>
-                  <p className="text-sm text-github-black/60 font-medium leading-relaxed">{item.desc}</p>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
@@ -238,22 +219,17 @@ const App: React.FC = () => {
         )}
 
         {state === AppState.ERROR && (
-          <div className="max-w-2xl mx-auto mt-20 space-y-8 animate-in fade-in slide-in-from-bottom-4">
+          <div className="max-w-2xl mx-auto mt-20 space-y-8">
             <div className="bg-white border border-github-black p-12 text-center space-y-6 shadow-[12px_12px_0px_0px_#0d1117]">
               <h2 className="text-2xl font-bold uppercase tracking-tighter">Loop Terminated</h2>
               <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">{error}</div>
               <div className="flex gap-4">
-                 <button onClick={() => setState(AppState.IDLE)} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs hover:invert transition-all">New Paper</button>
+                 <button onClick={() => setState(AppState.IDLE)} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">New Paper</button>
                  {implementation && (
-                   <button onClick={() => setState(AppState.COMPLETED)} className="flex-1 py-4 border border-github-black text-github-black font-bold uppercase tracking-widest text-xs hover:bg-peach-100 transition-all">View Partial Results</button>
+                   <button onClick={() => setState(AppState.COMPLETED)} className="flex-1 py-4 border border-github-black text-github-black font-bold uppercase tracking-widest text-xs">View Structural Analysis</button>
                  )}
               </div>
             </div>
-            {implementation && (
-              <p className="text-center text-[10px] font-black uppercase tracking-widest text-github-black/40">
-                The agent failed to converge, but logic can still be inspected.
-              </p>
-            )}
           </div>
         )}
       </main>
