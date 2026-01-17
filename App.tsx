@@ -22,23 +22,21 @@ const App: React.FC = () => {
 
   const geminiRef = useRef(new GeminiService());
 
-  // Detect if running in Google AI Studio (has built-in API key)
-  const isStudio = 
-    window.location.hostname.includes('aistudio.google.com') || 
-    window.location.hostname.includes('web-highlight') ||
-    window.location.href.includes('googleusercontent.com');
-
+  // Check initial key status on mount
   useEffect(() => {
     executionService.init().catch(console.error);
     const saved = JSON.parse(localStorage.getItem('research_loop_saved') || '[]');
     setSavedProjects(saved);
 
-    // Auto-enable Pro in Studio since API key is provided automatically
-    if (isStudio) {
-      setIsPro(true);
-      console.log('[AI Studio Detected] Pro mode enabled automatically');
-    }
-  }, [isStudio]);
+    const checkKeyStatus = async () => {
+      const aistudio = (window as any).aistudio;
+      if (aistudio && typeof aistudio.hasSelectedApiKey === 'function') {
+        const hasKey = await aistudio.hasSelectedApiKey();
+        setIsPro(hasKey);
+      }
+    };
+    checkKeyStatus();
+  }, []);
 
   const updateStep = (id: AppState, status: StepStatus['status'], message?: string) => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, message } : s));
@@ -53,40 +51,19 @@ const App: React.FC = () => {
   };
 
   const handleProToggle = async () => {
-    if (!isPro) {
-      if (isStudio) {
-        // In AI Studio: API key is automatic, just enable Pro
+    const aistudio = (window as any).aistudio;
+    
+    if (aistudio && typeof aistudio.openSelectKey === 'function') {
+      try {
+        await aistudio.openSelectKey();
+        // Mandatory guideline: assume key selection was successful and proceed.
         setIsPro(true);
-        console.log('[Pro Enabled] Using AI Studio built-in API key');
-      } else {
-        // External/localhost: Prompt user to enter API key
-        const apiKey = prompt(
-          'Enter your Gemini API Key for Pro features:\n' +
-          'Get your key at: https://aistudio.google.com/apikey\n\n' +
-          'Note: Pro features require a paid API key with billing enabled.'
-        );
-        
-        if (apiKey && apiKey.trim()) {
-          // Store API key in environment
-          (window as any).process = (window as any).process || {};
-          (window as any).process.env = (window as any).process.env || {};
-          (window as any).process.env.API_KEY = apiKey.trim();
-          
-          setIsPro(true);
-          console.log('[Pro Enabled] Using user-provided API key');
-        } else {
-          alert('API key required for Pro features');
-        }
+      } catch (err) {
+        console.error("Key selection dialog failed to open", err);
       }
     } else {
-      // Disable Pro mode
-      if (!isStudio) {
-        // Clear stored key for external deployments
-        if ((window as any).process?.env?.API_KEY) {
-          delete (window as any).process.env.API_KEY;
-        }
-      }
-      setIsPro(false);
+      // Toggle locally for non-studio environments (like Vercel)
+      setIsPro(!isPro);
     }
   };
 
@@ -235,11 +212,11 @@ const App: React.FC = () => {
             <span className="text-lg font-bold tracking-tight">RESEARCH<span className="text-peach-accent">LOOP</span></span>
           </div>
           <nav className="hidden md:flex items-center gap-6">
-            <button onClick={handleProToggle} className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest border transition-all ${isPro ? 'bg-peach-accent border-peach-accent text-white' : 'border-github-black text-github-black hover:bg-github-black hover:text-white'}`}>
-              {isPro 
-                ? (isStudio ? 'Pro Mode (Studio)' : 'Pro Mode Active') 
-                : (isStudio ? 'Pro Available' : 'Enable Pro (Enter Key)')
-              }
+            <button 
+              onClick={handleProToggle} 
+              className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest border transition-all ${isPro ? 'bg-peach-accent border-peach-accent text-white shadow-[4px_4px_0px_0px_#000]' : 'border-github-black text-github-black hover:bg-github-black hover:text-white'}`}
+            >
+              {isPro ? 'Pro Mode Active' : 'Enable Pro Mode'}
             </button>
             <button onClick={() => setActiveOverlay('manifesto')} className="text-[10px] font-bold uppercase tracking-widest hover:text-peach-accent transition-colors">Manifesto</button>
             <button onClick={() => setActiveOverlay('archive')} className="text-[10px] font-bold uppercase tracking-widest hover:text-peach-accent transition-colors">Archive</button>
@@ -255,10 +232,7 @@ const App: React.FC = () => {
                 Automate the <span className="font-light not-italic">Bridge</span>.
               </h1>
               <p className="text-xl md:text-2xl text-github-black/60 font-medium max-w-2xl leading-snug">
-                {isStudio 
-                  ? "Running in AI Studio. Pro features enabled with automatic API key." 
-                  : "Autonomous research paper to code synthesis. Enable Pro for advanced features."
-                }
+                Autonomous research paper to code synthesis. {isPro ? 'Pro Mode enabled: utilizing Gemini 3 Pro Reasoning.' : 'Standard Loop active.'}
               </p>
             </div>
 
@@ -291,14 +265,14 @@ const App: React.FC = () => {
             <div className="bg-white border border-github-black p-12 text-center space-y-6 shadow-[12px_12px_0px_0px_#0d1117]">
               <h2 className="text-2xl font-bold uppercase tracking-tighter text-red-600">Loop Collision</h2>
               <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">
-                {error?.includes('PRO_PERMISSION_ERROR') ? 
-                  "The current API key does not have access to Pro Imaging features. Please ensure your project has billing enabled or switch to a different key." : 
+                {error?.includes('AUTH_REQUIRED') ? 
+                  "The requested operation requires a billing-enabled API key for Pro models. Please select a valid key from a paid project in Google AI Studio." : 
                   error}
               </div>
               <div className="flex gap-4">
                  <button onClick={handleReset} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">Reset Loop</button>
-                 {!isStudio && isPro && (error?.includes('PRO_PERMISSION_ERROR') || error?.includes('API_KEY')) && (
-                   <button onClick={handleProToggle} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs">Re-enter API Key</button>
+                 {error?.includes('AUTH_REQUIRED') && (
+                   <button onClick={() => (window as any).aistudio?.openSelectKey?.()} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs">Update API Key</button>
                  )}
               </div>
             </div>

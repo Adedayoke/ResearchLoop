@@ -4,7 +4,8 @@ import { PaperAnalysis, ImplementationResult } from "../types";
 
 export class GeminiService {
   private getClient() {
-    // Exclusively use process.env.API_KEY as per guidelines
+    // Re-initialize for every call to ensure the most up-to-date key from window.aistudio is used.
+    // This is critical for AI Studio where the key might change after a user selects it.
     return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   }
 
@@ -12,12 +13,15 @@ export class GeminiService {
     console.error("Gemini API Error:", error);
     const message = error?.message || "";
     
-    if (message.includes('403') || message.includes('PERMISSION_DENIED')) {
-      throw new Error("PRO_PERMISSION_ERROR: The selected API key does not have permission for this model. This typically requires a paid GCP project with billing enabled for Pro features.");
-    }
-    
-    if (message.includes('Requested entity was not found') || message.includes('404')) {
-      throw new Error("API_KEY_NOT_FOUND: The requested model was not found or the API key is invalid. Please select a valid key from a paid project.");
+    // Detection for permission/billing/existence issues specifically mentioned in guidelines
+    if (
+      message.includes('403') || 
+      message.includes('PERMISSION_DENIED') || 
+      message.includes('404') || 
+      message.includes('not found') ||
+      message.includes('Requested entity was not found')
+    ) {
+      throw new Error("AUTH_REQUIRED: The current project or key does not support the requested Pro model. Please select a billing-enabled API key from a paid project in Google AI Studio.");
     }
 
     throw new Error(message || "An unexpected error occurred during reasoning.");
@@ -25,6 +29,7 @@ export class GeminiService {
 
   async analyzePaper(pdfBase64: string, isPro: boolean): Promise<PaperAnalysis> {
     const ai = this.getClient();
+    // Use gemini-3-pro-preview for complex reasoning tasks if Pro is enabled
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
     const tools = isPro ? [{ googleSearch: {} }] : undefined;
 
@@ -144,7 +149,7 @@ export class GeminiService {
   async generateArchitectureDiagram(analysis: PaperAnalysis): Promise<string> {
     const ai = this.getClient();
     try {
-      // Create a fresh instance for imaging to ensure latest key
+      // High-quality technical blueprints require gemini-3-pro-image-preview
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: {
@@ -166,14 +171,7 @@ export class GeminiService {
       }
       return '';
     } catch (e: any) {
-      console.warn("Pro Visualizer failed, attempting fallback...", e);
-      
-      // If permission is denied for Pro imaging, we catch it but don't crash the loop
-      // We still handle the error reporting in the main flow if needed
-      if (e?.message?.includes('403') || e?.message?.includes('PERMISSION_DENIED')) {
-          console.error("Imaging permission denied. User may need to select a billing-enabled key.");
-      }
-
+      console.warn("Pro Visualizer failed, attempting standard fallback...", e);
       try {
         const fallback = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
