@@ -44,6 +44,14 @@ const App: React.FC = () => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, message } : s));
   };
 
+  const handleReset = () => {
+    setState(AppState.IDLE);
+    setAnalysis(null);
+    setImplementation(null);
+    setError(null);
+    setSteps(STEPS.map(s => ({ ...s, id: s.id as AppState, status: 'pending' })));
+  };
+
   const handleProToggle = async () => {
     if (!isPro) {
       if (!isStudio) {
@@ -174,7 +182,7 @@ const App: React.FC = () => {
                 <h2 className="text-6xl md:text-8xl font-medium tracking-tight uppercase leading-none">THE ARCHIVE</h2>
                 <div className="border border-github-black divide-y divide-github-black">
                   {savedProjects.length > 0 ? savedProjects.map((p, i) => (
-                    <div key={i} className="p-8 hover:bg-white transition-colors flex justify-between items-center">
+                    <div key={i} className="p-8 hover:bg-white transition-colors flex justify-between items-center" onClick={() => setActiveOverlay(null)}>
                       <div className="flex items-center gap-3">
                         <span className="text-xl font-bold uppercase tracking-tight">{p.title}</span>
                         {p.isPro && <span className="text-[8px] px-2 py-0.5 bg-peach-accent text-white font-black uppercase">PRO</span>}
@@ -193,7 +201,7 @@ const App: React.FC = () => {
 
       <header className="sticky top-0 z-50 bg-peach-100/80 backdrop-blur-md border-b border-github-black/10 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setState(AppState.IDLE)}>
+          <div className="flex items-center gap-2 cursor-pointer" onClick={handleReset}>
             <div className="w-8 h-8 bg-github-black text-peach-100 flex items-center justify-center font-bold text-sm tracking-tighter">RL</div>
             <span className="text-lg font-bold tracking-tight">RESEARCH<span className="text-peach-accent">LOOP</span></span>
           </div>
@@ -240,7 +248,7 @@ const App: React.FC = () => {
         )}
 
         {state === AppState.COMPLETED && analysis && implementation && (
-          <ResultsUI analysis={analysis} implementation={implementation} />
+          <ResultsUI analysis={analysis} implementation={implementation} onReset={handleReset} />
         )}
 
         {state === AppState.ERROR && (
@@ -249,7 +257,7 @@ const App: React.FC = () => {
               <h2 className="text-2xl font-bold uppercase tracking-tighter text-red-600">Loop Collision</h2>
               <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">{error}</div>
               <div className="flex gap-4">
-                 <button onClick={() => setState(AppState.IDLE)} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">Reset Loop</button>
+                 <button onClick={handleReset} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">Reset Loop</button>
                  {!isStudio && error?.includes('API_KEY_ERROR') && (
                    <button onClick={handleProToggle} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs">Update API Key</button>
                  )}

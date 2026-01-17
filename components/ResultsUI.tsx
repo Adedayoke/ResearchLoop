@@ -1,15 +1,17 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PaperAnalysis, ImplementationResult } from '../types';
 import { AreaChart, Area, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
+import { marked } from 'marked';
 
 interface ResultsUIProps {
   analysis: PaperAnalysis;
   implementation: ImplementationResult;
+  onReset?: () => void;
 }
 
-const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
-  const [activeTab, setActiveTab] = useState<'explainer' | 'code' | 'inspector' | 'evolution' | 'parity' | 'grounding' | 'pro'>('explainer');
+const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation, onReset }) => {
+  const [activeTab, setActiveTab] = useState<'explainer' | 'code' | 'inspector' | 'evolution' | 'parity' | 'grounding' | 'pro' | 'summary'>('summary');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -47,6 +49,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
   };
 
   const tabs = [
+    { id: 'summary', label: 'Summary' },
     { id: 'explainer', label: 'Theory Map' },
     { id: 'pro', label: 'AI Visualizer', pro: true },
     { id: 'code', label: 'Implementation' },
@@ -55,6 +58,10 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
     { id: 'evolution', label: 'Agent Journey' },
     { id: 'grounding', label: 'Search Sources', pro: true }
   ].filter(tab => !tab.pro || (tab.pro && (implementation.architectureImage || (analysis.groundingSources && analysis.groundingSources.length > 0))));
+
+  const renderMarkdown = (text: string) => {
+    return { __html: marked.parse(text || '') };
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-12 animate-in fade-in duration-1000">
@@ -78,11 +85,19 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
                 {implementation.architectureImage && <span className="px-3 py-1 bg-white text-github-black text-[9px] font-black uppercase tracking-widest">Multimodal High-Fidelity</span>}
               </div>
               <h1 className="text-5xl md:text-7xl font-medium tracking-tighter leading-[0.9]">{analysis.title}</h1>
+              {analysis.authors && analysis.authors.length > 0 && (
+                <p className="text-peach-accent/60 font-mono text-xs uppercase tracking-widest">Authored by: {analysis.authors.join(', ')}</p>
+              )}
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4">
               {implementation.audioData && (
-                <button onClick={playVocal} className={`px-8 py-4 border border-peach-100 text-peach-100 text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-github-black transition-all ${isPlaying ? 'opacity-50' : ''}`}>
+                <button onClick={playVocal} className={`px-6 py-4 border border-peach-100 text-peach-100 text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-github-black transition-all ${isPlaying ? 'opacity-50' : ''}`}>
                   {isPlaying ? 'Synthesizing...' : 'Hear Theory Map'}
+                </button>
+              )}
+              {onReset && (
+                <button onClick={onReset} className="px-6 py-4 bg-peach-accent text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all">
+                  New Research
                 </button>
               )}
             </div>
@@ -111,6 +126,40 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
         </div>
 
         <div className="p-12 md:p-16">
+          {activeTab === 'summary' && (
+            <div className="space-y-12 animate-in fade-in max-w-4xl">
+              <section className="space-y-6">
+                <h2 className="text-xs font-black uppercase tracking-[0.3em] text-peach-accent">Research Abstract</h2>
+                <div 
+                  className="text-2xl md:text-3xl font-medium tracking-tight leading-snug text-github-black markdown-body" 
+                  dangerouslySetInnerHTML={renderMarkdown(analysis.summary)}
+                />
+              </section>
+              
+              <section className="space-y-6 pt-12 border-t border-github-black/5">
+                <h2 className="text-xs font-black uppercase tracking-[0.3em] text-peach-accent">Core Methodology</h2>
+                <div 
+                  className="text-lg text-github-black/70 leading-relaxed font-medium markdown-body" 
+                  dangerouslySetInnerHTML={renderMarkdown(analysis.methodology)}
+                />
+              </section>
+
+              {analysis.benchmarks && analysis.benchmarks.length > 0 && (
+                <section className="space-y-6 pt-12 border-t border-github-black/5">
+                  <h2 className="text-xs font-black uppercase tracking-[0.3em] text-peach-accent">Verified Benchmarks</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {analysis.benchmarks.map((b, i) => (
+                      <div key={i} className="p-6 bg-peach-100 border border-github-black/5 space-y-2">
+                        <h4 className="font-bold text-sm uppercase tracking-tight">{b.name}</h4>
+                        <p className="text-xs text-github-black/60 font-medium leading-relaxed">{b.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+
           {activeTab === 'explainer' && (
             <div className="space-y-20 animate-in fade-in slide-in-from-bottom-4">
               <div className="grid grid-cols-1 gap-12">
