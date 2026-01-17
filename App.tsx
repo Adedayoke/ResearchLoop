@@ -22,7 +22,6 @@ const App: React.FC = () => {
 
   const geminiRef = useRef(new GeminiService());
 
-  // Check initial key status on mount
   useEffect(() => {
     executionService.init().catch(console.error);
     const saved = JSON.parse(localStorage.getItem('research_loop_saved') || '[]');
@@ -50,46 +49,32 @@ const App: React.FC = () => {
     setSteps(STEPS.map(s => ({ ...s, id: s.id as AppState, status: 'pending' })));
   };
 
-  const handleProToggle = async () => {
+  const triggerKeySelection = async () => {
     const aistudio = (window as any).aistudio;
-    
     if (aistudio && typeof aistudio.openSelectKey === 'function') {
-      // AI Studio: Use native key selection dialog
       try {
         await aistudio.openSelectKey();
-        // Mandatory guideline: assume key selection was successful and proceed.
-        setIsPro(true);
+        setIsPro(true); // Rule: assume success and proceed
       } catch (err) {
-        console.error("Key selection dialog failed to open", err);
+        console.error("Key selection failed", err);
       }
     } else {
-      // External deployment (Vercel, etc): Prompt for API key
-      if (!isPro) {
-        const apiKey = prompt(
-          'Enter your Gemini API Key for Pro features:\n' +
-          'Get your key at: https://aistudio.google.com/apikey\n\n' +
-          'Note: Pro features require a paid API key with billing enabled.'
-        );
-        
-        if (apiKey && apiKey.trim()) {
-          // Store API key in environment
-          (window as any).process = (window as any).process || {};
-          (window as any).process.env = (window as any).process.env || {};
-          (window as any).process.env.API_KEY = apiKey.trim();
-          
-          setIsPro(true);
-          console.log('[Pro Enabled] Using user-provided API key');
-        } else {
-          alert('API key required for Pro features');
-        }
-      } else {
-        // Disable Pro mode and clear key
-        if ((window as any).process?.env?.API_KEY) {
-          delete (window as any).process.env.API_KEY;
-        }
-        setIsPro(false);
-      }
+      setIsPro(!isPro);
     }
+  };
+
+  const handleProToggle = async () => {
+    await triggerKeySelection();
+  };
+
+  const handleError = async (err: any) => {
+    if (geminiRef.current.isNotFoundError(err)) {
+      setError("Active API key session lost or invalid. Please re-select your key.");
+      await triggerKeySelection();
+    } else {
+      setError(err.message || "Autonomous loop failed.");
+    }
+    setState(AppState.ERROR);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,7 +93,7 @@ const App: React.FC = () => {
         const base64 = (event.target?.result as string).split(',')[1];
         
         try {
-          setCurrentLog(isPro ? "Using Pro Reasoning for deep analysis..." : "Analyzing algorithm structure...");
+          setCurrentLog(isPro ? "Requesting Pro reasoning (Adaptive Tier)..." : "Analyzing algorithm structure...");
           const paperData = await geminiRef.current.analyzePaper(base64, isPro);
           setAnalysis(paperData);
           updateStep(AppState.ANALYZING, 'success');
@@ -123,7 +108,7 @@ const App: React.FC = () => {
           let iteration = 1;
           const history: CodeVersion[] = [];
 
-          while (!passed && iteration <= 8) {
+          while (!passed && iteration <= 5) {
             setState(AppState.TESTING);
             updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}`);
             setCurrentLog(`Sandbox: Testing logic stability (Iteration ${iteration})...`);
@@ -137,11 +122,11 @@ const App: React.FC = () => {
               code: result.code,
               explanation: result.explanation,
               error: passed ? undefined : runResults.logs,
-              stabilityScore: passed ? 100 : Math.min(95, 20 + (iteration * 10))
+              stabilityScore: passed ? 100 : Math.min(95, 20 + (iteration * 15))
             });
 
             if (!passed) {
-              if (iteration === 8) break;
+              if (iteration === 5) break;
               setState(AppState.DEBUGGING);
               updateStep(AppState.DEBUGGING, 'loading', `Refining cycle ${iteration}`);
               setCurrentLog(`Agent: Repairing code via diagnostic feedback...`);
@@ -153,24 +138,20 @@ const App: React.FC = () => {
 
           result.history = history;
 
+          // Multimodal assets are strictly non-blocking
           if (isPro) {
             setState(AppState.VISUALIZING);
             updateStep(AppState.COMPLETED, 'loading');
-            setCurrentLog("Synthesizing technical architecture imagery...");
+            setCurrentLog("Optional: Synthesis of technical blueprints...");
             try {
               const img = await geminiRef.current.generateArchitectureDiagram(paperData);
               if (img) result.architectureImage = img;
-            } catch (imgErr) {
-              console.warn("Visualizer failed", imgErr);
-            }
+            } catch (imgErr) { console.warn("Image synthesis skipped:", imgErr); }
             
             setState(AppState.VOCALIZING);
-            setCurrentLog("Generating audio theory map...");
             try {
               result.audioData = await geminiRef.current.generateVocalExplanation(result);
-            } catch (audErr) {
-              console.warn("Vocalizer failed", audErr);
-            }
+            } catch (audErr) { console.warn("Audio synthesis skipped:", audErr); }
           }
 
           setState(AppState.COMPLETED);
@@ -183,19 +164,20 @@ const App: React.FC = () => {
           localStorage.setItem('research_loop_saved', JSON.stringify(newSaved));
           setSavedProjects(newSaved);
         } catch (innerErr: any) {
-          setError(innerErr.message);
-          setState(AppState.ERROR);
+          handleError(innerErr);
         }
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      setError(err.message || "Autonomous loop failed.");
-      setState(AppState.ERROR);
+      handleError(err);
     }
   };
 
   return (
-    <div className="min-h-screen bg-peach-100 text-github-black font-sans selection:bg-peach-accent selection:text-white relative">
+    <div className="min-h-screen bg-peach-100 text-github-black font-sans selection:bg-peach-accent selection:text-white relative overflow-x-hidden">
+      {/* Dynamic Background Grid */}
+      <div className="fixed inset-0 pointer-events-none opacity-[0.03] z-0" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
+      
       {activeOverlay && (
         <div className="fixed inset-0 z-[100] bg-peach-100 p-8 md:p-20 overflow-y-auto animate-in fade-in duration-300">
           <button onClick={() => setActiveOverlay(null)} className="fixed top-8 right-8 w-12 h-12 border border-github-black flex items-center justify-center font-bold hover:bg-github-black hover:text-peach-100 transition-all z-[110]">✕</button>
@@ -211,9 +193,9 @@ const App: React.FC = () => {
             ) : (
               <div className="space-y-12">
                 <h2 className="text-6xl md:text-8xl font-medium tracking-tight uppercase leading-none">THE ARCHIVE</h2>
-                <div className="border border-github-black divide-y divide-github-black">
+                <div className="border border-github-black divide-y divide-github-black bg-white">
                   {savedProjects.length > 0 ? savedProjects.map((p, i) => (
-                    <div key={i} className="p-8 hover:bg-white transition-colors flex justify-between items-center" onClick={() => setActiveOverlay(null)}>
+                    <div key={i} className="p-8 hover:bg-peach-50 transition-colors flex justify-between items-center cursor-pointer" onClick={() => setActiveOverlay(null)}>
                       <div className="flex items-center gap-3">
                         <span className="text-xl font-bold uppercase tracking-tight">{p.title}</span>
                         {p.isPro && <span className="text-[8px] px-2 py-0.5 bg-peach-accent text-white font-black uppercase">PRO</span>}
@@ -232,8 +214,8 @@ const App: React.FC = () => {
 
       <header className="sticky top-0 z-50 bg-peach-100/80 backdrop-blur-md border-b border-github-black/10 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={handleReset}>
-            <div className="w-8 h-8 bg-github-black text-peach-100 flex items-center justify-center font-bold text-sm tracking-tighter">RL</div>
+          <div className="flex items-center gap-2 cursor-pointer group" onClick={handleReset}>
+            <div className="w-8 h-8 bg-github-black text-peach-100 flex items-center justify-center font-bold text-sm tracking-tighter group-hover:bg-peach-accent transition-colors">RL</div>
             <span className="text-lg font-bold tracking-tight">RESEARCH<span className="text-peach-accent">LOOP</span></span>
           </div>
           <nav className="hidden md:flex items-center gap-6">
@@ -249,7 +231,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 pt-16 pb-32">
+      <main className="max-w-7xl mx-auto px-6 pt-16 pb-32 relative z-10">
         {state === AppState.IDLE && (
           <div className="max-w-4xl mx-auto space-y-16 animate-in fade-in duration-700">
             <div className="space-y-6">
@@ -257,7 +239,7 @@ const App: React.FC = () => {
                 Automate the <span className="font-light not-italic">Bridge</span>.
               </h1>
               <p className="text-xl md:text-2xl text-github-black/60 font-medium max-w-2xl leading-snug">
-                Autonomous research paper to code synthesis. {isPro ? 'Pro Mode enabled: utilizing Gemini 3 Pro Reasoning.' : 'Standard Loop active.'}
+                Autonomous research paper to code synthesis. {isPro ? 'Pro Mode: Deep reasoning enabled (Adaptive fallback to Flash if key tier restricted).' : 'Standard Loop active.'}
               </p>
             </div>
 
@@ -266,10 +248,12 @@ const App: React.FC = () => {
               <div className="relative bg-white border border-github-black p-16 cursor-pointer">
                 <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="application/pdf" onChange={handleFileUpload} />
                 <div className="flex flex-col items-center gap-6">
-                  <div className="w-20 h-20 bg-peach-100 border border-github-black flex items-center justify-center"><Icons.Upload /></div>
+                  <div className="w-20 h-20 bg-peach-100 border border-github-black flex items-center justify-center group-hover:bg-peach-accent group-hover:text-white transition-colors">
+                    <Icons.Upload />
+                  </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold uppercase tracking-tight">Drop PDF to start {isPro ? 'Pro' : 'Standard'} loop</p>
-                    <p className="text-github-black/40 text-sm mt-2 font-medium">Powered by {isPro ? 'Gemini 3 Pro' : 'Gemini 3 Flash'}</p>
+                    <p className="text-github-black/40 text-sm mt-2 font-medium">Powered by Gemini 3</p>
                   </div>
                 </div>
               </div>
@@ -286,19 +270,16 @@ const App: React.FC = () => {
         )}
 
         {state === AppState.ERROR && (
-          <div className="max-w-2xl mx-auto mt-20 space-y-8">
+          <div className="max-w-2xl mx-auto mt-20 space-y-8 animate-in slide-in-from-bottom-10">
             <div className="bg-white border border-github-black p-12 text-center space-y-6 shadow-[12px_12px_0px_0px_#0d1117]">
               <h2 className="text-2xl font-bold uppercase tracking-tighter text-red-600">Loop Collision</h2>
               <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">
-                {error?.includes('AUTH_REQUIRED') ? 
-                  "The requested operation requires a billing-enabled API key for Pro models. Please select a valid key from a paid project in Google AI Studio." : 
-                  error}
+                {error}
               </div>
-              <div className="flex gap-4">
-                 <button onClick={handleReset} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">Reset Loop</button>
-                 {error?.includes('AUTH_REQUIRED') && (
-                   <button onClick={() => (window as any).aistudio?.openSelectKey?.()} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs">Update API Key</button>
-                 )}
+              <div className="flex flex-col md:flex-row gap-4">
+                 <button onClick={handleReset} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs hover:bg-red-600 transition-colors">Reset Loop</button>
+                 <button onClick={() => { setIsPro(false); handleReset(); }} className="flex-1 py-4 border border-github-black text-github-black font-bold uppercase tracking-widest text-xs hover:bg-peach-100 transition-colors">Retry Standard Mode</button>
+                 <button onClick={triggerKeySelection} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs shadow-[4px_4px_0px_0px_#000]">Update API Key</button>
               </div>
             </div>
           </div>
