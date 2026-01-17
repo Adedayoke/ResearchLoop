@@ -50,6 +50,7 @@ const App: React.FC = () => {
 
     setState(AppState.ANALYZING);
     setError(null);
+    setImplementation(null);
     updateStep(AppState.ANALYZING, 'loading', isPro ? 'Pro Grounding...' : 'Analyzing paper...');
 
     try {
@@ -57,13 +58,13 @@ const App: React.FC = () => {
       reader.onload = async (event) => {
         const base64 = (event.target?.result as string).split(',')[1];
         
-        setCurrentLog(isPro ? "Web-grounding theory..." : "Extracting equations...");
+        setCurrentLog(isPro ? "Web-grounding theoretical foundation..." : "Extracting algorithm structure...");
         const paperData = await geminiRef.current.analyzePaper(base64, isPro);
         setAnalysis(paperData);
         updateStep(AppState.ANALYZING, 'success');
         
         setState(AppState.IMPLEMENTING);
-        updateStep(AppState.IMPLEMENTING, 'loading', 'Synthesizing implementation...');
+        updateStep(AppState.IMPLEMENTING, 'loading', 'Synthesizing Python core...');
         let result = await geminiRef.current.generateInitialImplementation(paperData, isPro);
         updateStep(AppState.IMPLEMENTING, 'success');
 
@@ -73,8 +74,8 @@ const App: React.FC = () => {
 
         while (!passed && iteration <= 8) {
           setState(AppState.TESTING);
-          updateStep(AppState.TESTING, 'loading', `Testing iter ${iteration}...`);
-          setCurrentLog(`Verifying structural parity (Iteration ${iteration})...`);
+          updateStep(AppState.TESTING, 'loading', `Verification Iter ${iteration}...`);
+          setCurrentLog(`Testing structural parity (Cycle ${iteration})...`);
           
           const runResults = await executionService.runPython(result.code, result.tests);
           result.testResults = runResults;
@@ -85,17 +86,18 @@ const App: React.FC = () => {
             code: result.code,
             explanation: result.explanation,
             error: passed ? undefined : runResults.logs,
-            stabilityScore: passed ? 100 : 20 + (iteration * 10)
+            stabilityScore: passed ? 100 : 20 + (iteration * 8)
           });
 
           if (!passed) {
             if (iteration === 8) {
-              setImplementation({ ...result, history });
-              throw new Error("Max iterations reached. Could not converge on structural parity.");
+              // Graceful failure - don't throw, just wrap up
+              setCurrentLog("Maximum iterations reached. Finalizing partial results.");
+              break; 
             }
             setState(AppState.DEBUGGING);
-            updateStep(AppState.DEBUGGING, 'loading', `Debugging...`);
-            setCurrentLog(`Repairing logic...`);
+            updateStep(AppState.DEBUGGING, 'loading', `Fixing traceback...`);
+            setCurrentLog(`Agent repairing logic based on traceback...`);
             const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
             result = { ...result, ...refined, iterationCount: iteration + 1 };
             iteration++;
@@ -106,12 +108,12 @@ const App: React.FC = () => {
 
         if (isPro) {
           setState(AppState.VISUALIZING);
-          updateStep(AppState.COMPLETED, 'loading', 'Visualizing architecture...');
-          setCurrentLog("Generating AI Architecture Diagram...");
+          updateStep(AppState.COMPLETED, 'loading', 'Generating Visuals...');
+          setCurrentLog("Synthesizing Architecture Map...");
           result.architectureImage = await geminiRef.current.generateArchitectureDiagram(paperData);
           
           setState(AppState.VOCALIZING);
-          setCurrentLog("Synthesizing Vocal Engineer Explanation...");
+          setCurrentLog("Encoding Vocal Verification...");
           result.audioData = await geminiRef.current.generateVocalExplanation(result);
         }
 
@@ -125,7 +127,7 @@ const App: React.FC = () => {
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      setError(err.message || "Autonomous loop failed.");
+      setError(err.message || "Autonomous loop was interrupted.");
       setState(AppState.ERROR);
     }
   };
@@ -142,14 +144,14 @@ const App: React.FC = () => {
                 <h2 className="text-6xl md:text-8xl font-medium tracking-tight uppercase leading-none">THE RESEARCH<br/>MANIFESTO</h2>
                 <div className="space-y-8 text-2xl text-github-black/70 leading-relaxed max-w-2xl font-medium">
                   <p>Theoretical knowledge shouldn't be trapped in PDFs. We bridge the gap between abstract equations and runnable code.</p>
-                  <p className="text-peach-accent">Autonomous agents don't just write code; they verify reality.</p>
+                  <p className="text-peach-accent">Autonomous agents don't just write code; they verify reality in isolated runtimes.</p>
                 </div>
               </div>
             ) : (
               <div className="space-y-12">
                 <h2 className="text-6xl md:text-8xl font-medium tracking-tight uppercase leading-none">THE ARCHIVE</h2>
                 <div className="border border-github-black divide-y divide-github-black">
-                  {savedProjects.map((p, i) => (
+                  {savedProjects.length > 0 ? savedProjects.map((p, i) => (
                     <div key={i} className="p-8 hover:bg-white transition-colors flex justify-between items-center">
                       <div className="flex items-center gap-3">
                         <span className="text-xl font-bold uppercase tracking-tight">{p.title}</span>
@@ -157,7 +159,9 @@ const App: React.FC = () => {
                       </div>
                       <span className="text-[10px] font-black uppercase tracking-widest opacity-30">Verified {new Date(p.timestamp).toLocaleDateString()}</span>
                     </div>
-                  ))}
+                  )) : (
+                    <div className="p-20 text-center text-xs font-bold uppercase opacity-30">No history found</div>
+                  )}
                 </div>
               </div>
             )}
@@ -190,7 +194,7 @@ const App: React.FC = () => {
                 Automate the <span className="font-light not-italic">Bridge</span>.
               </h1>
               <p className="text-xl md:text-2xl text-github-black/60 font-medium max-w-2xl leading-snug">
-                ResearchLoop reads PDFs, extracts core methodology, and iterates until implementation is verified structurally.
+                ResearchLoop reads PDFs, extracts core methodology, and iterates until implementation is verified structurally in a WASM sandbox.
               </p>
             </div>
 
@@ -225,9 +229,6 @@ const App: React.FC = () => {
               <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">{error}</div>
               <div className="flex gap-4">
                  <button onClick={() => setState(AppState.IDLE)} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">New Paper</button>
-                 {implementation && (
-                   <button onClick={() => setState(AppState.COMPLETED)} className="flex-1 py-4 border border-github-black text-github-black font-bold uppercase tracking-widest text-xs">View Structural Analysis</button>
-                 )}
               </div>
             </div>
           </div>

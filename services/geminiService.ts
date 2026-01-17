@@ -27,7 +27,7 @@ export class GeminiService {
         contents: {
           parts: [
             { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-            { text: "Analyze this paper. Extract title, authors, summary, methodology, and a list of key architectural benchmarks/features. Output JSON." }
+            { text: "Analyze this research paper. Extract the title, authors, summary, methodology, and a list of key architectural features or benchmarks. Focus on the mathematical core. Output JSON." }
           ]
         },
         config: {
@@ -77,9 +77,12 @@ export class GeminiService {
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
     
-    const prompt = `Implement "${analysis.title}" in Python 3.10 with NumPy. 
-Focus on mathematical structural parity.
-In 'structuralParity', describe how the code maps to specific paper claims.
+    const prompt = `Act as a Senior Research Engineer. Implement the core logic of "${analysis.title}" in Python 3.10 using NumPy.
+Requirements:
+1. Code must be self-contained and mathematically accurate to the paper.
+2. Use explicit NumPy broadcasting and check shapes to avoid dimension errors.
+3. Provide a 'tests' script that exercises the core algorithm with sample data.
+4. map research quotes to specific code snippets in 'equationMappings'.
 Output JSON.`;
 
     try {
@@ -142,7 +145,7 @@ Output JSON.`;
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: {
-          parts: [{ text: `High-resolution technical architecture diagram for the research paper: ${analysis.title}. Schematic diagram showing logic blocks, data flow, and layers. 16:9 aspect ratio, clean white background, professional engineering style.` }],
+          parts: [{ text: `High-fidelity technical schematic of the research architecture for: ${analysis.title}. Diagram showing computational nodes, data tensors, and mathematical flow. White background, professional engineering blue and orange palette.` }],
         },
         config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
       });
@@ -160,7 +163,7 @@ Output JSON.`;
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Briefly explain the structural verification of this algorithm: ${implementation.explanation.slice(0, 400)}` }] }],
+        contents: [{ parts: [{ text: `In a professional tone, summarize how this code implements the paper's core methodology: ${implementation.explanation.slice(0, 400)}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -175,7 +178,21 @@ Output JSON.`;
   async refineImplementation(analysis: PaperAnalysis, currentResult: ImplementationResult, errorLogs: string, isPro: boolean): Promise<any> {
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
-    const prompt = `REPAIR LOGIC. Traceback: ${errorLogs}. Fix dimensions and broadcasting. Output JSON.`;
+    
+    const prompt = `CRITICAL FIX REQUIRED for "${analysis.title}".
+The following Python implementation failed with a traceback. 
+
+TRACEBACK:
+${errorLogs}
+
+PREVIOUS CODE:
+${currentResult.code}
+
+INSTRUCTIONS:
+1. Carefully diagnose the error (e.g., NumPy shape mismatch, broadcasting issue, or initialization error).
+2. Rewrite the code and tests to fix this specific error while maintaining mathematical correctness.
+3. Be aggressive about shape-safety in NumPy operations.
+Output JSON.`;
 
     try {
       const response = await ai.models.generateContent({
