@@ -9,6 +9,7 @@ import ResultsUI from './components/ResultsUI';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(AppState.IDLE);
+  const [isPro, setIsPro] = useState(false);
   const [steps, setSteps] = useState<StepStatus[]>(
     STEPS.map(s => ({ ...s, id: s.id as AppState, status: 'pending' }))
   );
@@ -33,27 +34,39 @@ const App: React.FC = () => {
 
   const addLog = (msg: string) => setCurrentLog(msg);
 
+  const handleProToggle = async () => {
+    if (!isPro) {
+      const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        await (window as any).aistudio.openSelectKey();
+      }
+      setIsPro(true);
+    } else {
+      setIsPro(false);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setState(AppState.ANALYZING);
     setError(null);
-    updateStep(AppState.ANALYZING, 'loading', 'Analyzing paper structure...');
+    updateStep(AppState.ANALYZING, 'loading', isPro ? 'Pro Analysis with Web Grounding...' : 'Analyzing paper structure...');
 
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64 = (event.target?.result as string).split(',')[1];
         
-        addLog("Analyzing theoretical methodology...");
-        const paperData = await geminiRef.current.analyzePaper(base64);
+        addLog(isPro ? "Grounding theoretical methodology against Google Search..." : "Analyzing theoretical methodology...");
+        const paperData = await geminiRef.current.analyzePaper(base64, isPro);
         setAnalysis(paperData);
         updateStep(AppState.ANALYZING, 'success', paperData.title);
         
         setState(AppState.IMPLEMENTING);
         updateStep(AppState.IMPLEMENTING, 'loading', 'Synthesizing implementation...');
-        let result = await geminiRef.current.generateInitialImplementation(paperData);
+        let result = await geminiRef.current.generateInitialImplementation(paperData, isPro);
         updateStep(AppState.IMPLEMENTING, 'success', 'Base logic generated');
 
         let passed = false;
@@ -82,24 +95,35 @@ const App: React.FC = () => {
             setState(AppState.DEBUGGING);
             updateStep(AppState.DEBUGGING, 'loading', `Debugging cycle ${iteration}...`);
             addLog(`Repairing logic based on traceback...`);
-            const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs);
+            const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
             result = { ...result, ...refined, iterationCount: iteration + 1 };
             iteration++;
           }
         }
 
         result.history = history;
+
+        if (isPro) {
+          setState(AppState.VISUALIZING);
+          addLog("Generating AI Architecture Diagram...");
+          result.architectureImage = await geminiRef.current.generateArchitectureDiagram(paperData);
+          
+          setState(AppState.VOCALIZING);
+          addLog("Synthesizing Vocal Engineer Explanation...");
+          result.audioData = await geminiRef.current.generateVocalExplanation(result);
+        }
+
         setState(AppState.COMPLETED);
         updateStep(AppState.COMPLETED, 'success', 'Verification complete');
         setImplementation(result);
 
-        // Save to local storage for community projects view
-        const newSaved = [{ title: paperData.title, timestamp: Date.now() }, ...savedProjects.slice(0, 4)];
+        const newSaved = [{ title: paperData.title, timestamp: Date.now(), isPro }, ...savedProjects.slice(0, 4)];
         localStorage.setItem('research_loop_saved', JSON.stringify(newSaved));
         setSavedProjects(newSaved);
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
+      if (err.message.includes("API_KEY_ERROR")) setIsPro(false);
       setError(err.message || "Autonomous loop interrupted by critical failure.");
       setState(AppState.ERROR);
     }
@@ -110,12 +134,7 @@ const App: React.FC = () => {
       {/* Overlays */}
       {activeOverlay && (
         <div className="fixed inset-0 z-[100] bg-peach-100 p-8 md:p-20 overflow-y-auto animate-in fade-in duration-300">
-          <button 
-            onClick={() => setActiveOverlay(null)}
-            className="fixed top-8 right-8 w-12 h-12 border border-github-black flex items-center justify-center font-bold hover:bg-github-black hover:text-peach-100 transition-all z-[110]"
-          >
-            ✕
-          </button>
+          <button onClick={() => setActiveOverlay(null)} className="fixed top-8 right-8 w-12 h-12 border border-github-black flex items-center justify-center font-bold hover:bg-github-black hover:text-peach-100 transition-all z-[110]">✕</button>
           <div className="max-w-4xl mx-auto space-y-12">
             {activeOverlay === 'manifesto' ? (
               <div className="space-y-12">
@@ -129,14 +148,15 @@ const App: React.FC = () => {
               <div className="space-y-12">
                 <h2 className="text-6xl md:text-8xl font-medium tracking-tight uppercase leading-none">THE ARCHIVE</h2>
                 <div className="border border-github-black divide-y divide-github-black">
-                  {savedProjects.length > 0 ? savedProjects.map((p, i) => (
+                  {savedProjects.map((p, i) => (
                     <div key={i} className="p-8 hover:bg-white transition-colors flex justify-between items-center">
-                      <span className="text-xl font-bold uppercase tracking-tight">{p.title}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl font-bold uppercase tracking-tight">{p.title}</span>
+                        {p.isPro && <span className="text-[8px] px-2 py-0.5 bg-peach-accent text-white font-black uppercase">PRO</span>}
+                      </div>
                       <span className="text-[10px] font-black uppercase tracking-widest opacity-30">Verified {new Date(p.timestamp).toLocaleDateString()}</span>
                     </div>
-                  )) : (
-                    <div className="p-20 text-center opacity-20 font-black uppercase tracking-widest">No local history found</div>
-                  )}
+                  ))}
                 </div>
               </div>
             )}
@@ -152,11 +172,11 @@ const App: React.FC = () => {
             <span className="text-lg font-bold tracking-tight">RESEARCH<span className="text-peach-accent">LOOP</span></span>
           </div>
           <nav className="hidden md:flex items-center gap-6">
+            <button onClick={handleProToggle} className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest border transition-all ${isPro ? 'bg-peach-accent border-peach-accent text-white' : 'border-github-black text-github-black hover:bg-github-black hover:text-white'}`}>
+              {isPro ? 'Pro Active (Gemini 3 Pro)' : 'Upgrade to Pro'}
+            </button>
             <button onClick={() => setActiveOverlay('manifesto')} className="text-[10px] font-bold uppercase tracking-widest hover:text-peach-accent transition-colors">Manifesto</button>
             <button onClick={() => setActiveOverlay('archive')} className="text-[10px] font-bold uppercase tracking-widest hover:text-peach-accent transition-colors">Archive</button>
-            <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest bg-github-black text-peach-100 border border-github-black">
-              Agent Active
-            </div>
           </nav>
         </div>
       </header>
@@ -169,7 +189,7 @@ const App: React.FC = () => {
                 Automate the <span className="font-light not-italic">Bridge</span>.
               </h1>
               <p className="text-xl md:text-2xl text-github-black/60 font-medium max-w-2xl leading-snug">
-                ResearchLoop reads PDFs, extracts core methodology, and iterates until the implementation is verified against reported benchmarks.
+                ResearchLoop reads PDFs, extracts core methodology, and iterates until implementation is verified.
               </p>
             </div>
 
@@ -180,19 +200,18 @@ const App: React.FC = () => {
                 <div className="flex flex-col items-center gap-6">
                   <div className="w-20 h-20 bg-peach-100 border border-github-black flex items-center justify-center"><Icons.Upload /></div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold uppercase tracking-tight">Drop PDF to start loop</p>
-                    <p className="text-github-black/40 text-sm mt-2 font-medium">Verification powered by Gemini 3 Pro</p>
+                    <p className="text-2xl font-bold uppercase tracking-tight">Drop PDF to start {isPro ? 'Pro' : 'Standard'} loop</p>
+                    <p className="text-github-black/40 text-sm mt-2 font-medium">Verification powered by {isPro ? 'Gemini 3 Pro + Search' : 'Gemini 3 Flash'}</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Feature Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-12 pt-12 border-t border-github-black/10">
               {[
                 { title: 'In-Browser Runtime', desc: 'Real Python execution using Pyodide (WASM) for verification.' },
-                { title: 'Self-Correction', desc: 'Gemini-driven debugging loops that fix real traceback errors.' },
-                { title: 'Theory Mapping', desc: 'Automatic linkage between equations in paper and sections of code.' }
+                { title: isPro ? 'Web Grounding (PRO)' : 'Self-Correction', desc: isPro ? 'Validates logic against web sources and official repos.' : 'Gemini-driven debugging loops that fix traceback errors.' },
+                { title: isPro ? 'Vocal & Visual (PRO)' : 'Theory Mapping', desc: isPro ? 'AI-generated architecture diagrams and vocal explanations.' : 'Automatic linkage between equations and code sections.' }
               ].map((item, i) => (
                 <div key={i} className="space-y-3">
                   <h3 className="text-sm font-black uppercase tracking-widest text-peach-accent">{item.title}</h3>
@@ -200,21 +219,6 @@ const App: React.FC = () => {
                 </div>
               ))}
             </div>
-
-            {/* Community Projects */}
-            {savedProjects.length > 0 && (
-              <div className="space-y-6 pt-12 border-t border-github-black/10">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-github-black/40">Recent Session Verifications</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {savedProjects.map((p, i) => (
-                    <div key={i} className="p-6 bg-white border border-github-black/5 flex justify-between items-center group hover:border-peach-accent transition-colors">
-                      <span className="font-bold truncate max-w-[200px] uppercase tracking-tight">{p.title}</span>
-                      <span className="text-[9px] font-black uppercase tracking-widest opacity-20">Verified {new Date(p.timestamp).toLocaleDateString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -234,18 +238,6 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
-
-      {/* Footer */}
-      <footer className="mt-auto border-t border-github-black/5 py-12 px-6 bg-white/30">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8 opacity-40 hover:opacity-100 transition-opacity">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em]">ResearchLoop Engine v1.0 // Pyodide 0.26.1 Runtime</p>
-          <div className="flex gap-10">
-            {['GitHub', 'Documentation', 'Privacy', 'Status'].map(link => (
-              <a key={link} href="#" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-peach-accent transition-colors">{link}</a>
-            ))}
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };

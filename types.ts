@@ -6,8 +6,15 @@ export enum AppState {
   IMPLEMENTING = 'IMPLEMENTING',
   TESTING = 'TESTING',
   DEBUGGING = 'DEBUGGING',
+  VISUALIZING = 'VISUALIZING',
+  VOCALIZING = 'VOCALIZING',
   COMPLETED = 'COMPLETED',
   ERROR = 'ERROR'
+}
+
+export interface GroundingSource {
+  title: string;
+  uri: string;
 }
 
 export interface PaperAnalysis {
@@ -22,6 +29,7 @@ export interface PaperAnalysis {
     score: number;
     unit: string;
   }[];
+  groundingSources?: GroundingSource[];
 }
 
 export interface CodeVersion {
@@ -61,6 +69,8 @@ export interface ImplementationResult {
     paperValue: number;
     implValue: number;
   }[];
+  architectureImage?: string;
+  audioData?: string;
 }
 
 export interface StepStatus {
