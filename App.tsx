@@ -51,7 +51,7 @@ const App: React.FC = () => {
     setState(AppState.ANALYZING);
     setError(null);
     setImplementation(null);
-    updateStep(AppState.ANALYZING, 'loading', isPro ? 'Pro Grounding...' : 'Analyzing paper...');
+    updateStep(AppState.ANALYZING, 'loading');
 
     try {
       const reader = new FileReader();
@@ -64,7 +64,8 @@ const App: React.FC = () => {
         updateStep(AppState.ANALYZING, 'success');
         
         setState(AppState.IMPLEMENTING);
-        updateStep(AppState.IMPLEMENTING, 'loading', 'Synthesizing Python core...');
+        updateStep(AppState.IMPLEMENTING, 'loading');
+        setCurrentLog("Synthesizing initial implementation layer...");
         let result = await geminiRef.current.generateInitialImplementation(paperData, isPro);
         updateStep(AppState.IMPLEMENTING, 'success');
 
@@ -74,8 +75,8 @@ const App: React.FC = () => {
 
         while (!passed && iteration <= 8) {
           setState(AppState.TESTING);
-          updateStep(AppState.TESTING, 'loading', `Verification Iter ${iteration}...`);
-          setCurrentLog(`Testing structural parity (Cycle ${iteration})...`);
+          updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}`);
+          setCurrentLog(`Testing parity in WASM sandbox (Iter ${iteration})...`);
           
           const runResults = await executionService.runPython(result.code, result.tests);
           result.testResults = runResults;
@@ -91,13 +92,12 @@ const App: React.FC = () => {
 
           if (!passed) {
             if (iteration === 8) {
-              // Graceful failure - don't throw, just wrap up
-              setCurrentLog("Maximum iterations reached. Finalizing partial results.");
+              setCurrentLog("Max iterations reached. Proceeding with last stable hypothesis.");
               break; 
             }
             setState(AppState.DEBUGGING);
-            updateStep(AppState.DEBUGGING, 'loading', `Fixing traceback...`);
-            setCurrentLog(`Agent repairing logic based on traceback...`);
+            updateStep(AppState.DEBUGGING, 'loading', `Repair cycle ${iteration}`);
+            setCurrentLog(`Agent performing diagnostic repair on traceback...`);
             const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
             result = { ...result, ...refined, iterationCount: iteration + 1 };
             iteration++;
@@ -108,16 +108,18 @@ const App: React.FC = () => {
 
         if (isPro) {
           setState(AppState.VISUALIZING);
-          updateStep(AppState.COMPLETED, 'loading', 'Generating Visuals...');
-          setCurrentLog("Synthesizing Architecture Map...");
+          updateStep(AppState.COMPLETED, 'loading');
+          setCurrentLog("Generating high-fidelity architecture visualization...");
           result.architectureImage = await geminiRef.current.generateArchitectureDiagram(paperData);
           
           setState(AppState.VOCALIZING);
-          setCurrentLog("Encoding Vocal Verification...");
+          setCurrentLog("Encoding vocal explanation layer...");
           result.audioData = await geminiRef.current.generateVocalExplanation(result);
         }
 
         setState(AppState.COMPLETED);
+        updateStep(AppState.TESTING, passed ? 'success' : 'error');
+        updateStep(AppState.DEBUGGING, 'success');
         updateStep(AppState.COMPLETED, 'success');
         setImplementation(result);
 

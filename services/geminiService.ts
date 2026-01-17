@@ -13,7 +13,7 @@ export class GeminiService {
     if (error?.message?.includes('Requested entity was not found')) {
       throw new Error("API_KEY_ERROR: Invalid project or API key.");
     }
-    throw new Error(error?.message || "An unexpected error occurred.");
+    throw new Error(error?.message || "An unexpected error occurred during reasoning.");
   }
 
   async analyzePaper(pdfBase64: string, isPro: boolean): Promise<PaperAnalysis> {
@@ -27,7 +27,7 @@ export class GeminiService {
         contents: {
           parts: [
             { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-            { text: "Analyze this research paper. Extract the title, authors, summary, methodology, and a list of key architectural features or benchmarks. Focus on the mathematical core. Output JSON." }
+            { text: "Analyze this research paper. Extract the title, authors, summary, methodology, and a list of key architectural features. Focus on extracting mathematical constants and algorithm layers. Output JSON." }
           ]
         },
         config: {
@@ -77,13 +77,12 @@ export class GeminiService {
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
     
-    const prompt = `Act as a Senior Research Engineer. Implement the core logic of "${analysis.title}" in Python 3.10 using NumPy.
-Requirements:
-1. Code must be self-contained and mathematically accurate to the paper.
-2. Use explicit NumPy broadcasting and check shapes to avoid dimension errors.
-3. Provide a 'tests' script that exercises the core algorithm with sample data.
-4. map research quotes to specific code snippets in 'equationMappings'.
-Output JSON.`;
+    const prompt = `Act as a Senior Research Engineer. Implement "${analysis.title}" in Python 3.10 + NumPy.
+STRATEGY:
+1. Translate methodology into a class-based structure.
+2. Use explicit shape checks and NumPy broadcasting.
+3. Provide a 'tests' script that exercises the core algorithm.
+Output JSON with: code, explanation, tests, structuralParity, equationMappings.`;
 
     try {
       const response = await ai.models.generateContent({
@@ -145,9 +144,12 @@ Output JSON.`;
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: {
-          parts: [{ text: `High-fidelity technical schematic of the research architecture for: ${analysis.title}. Diagram showing computational nodes, data tensors, and mathematical flow. White background, professional engineering blue and orange palette.` }],
+          parts: [{ text: `Architectural blueprint for the research paper: ${analysis.title}. Technical schematic showing data flow, neural layers, and mathematical blocks. Minimalist professional style, white background, peach accents.` }],
         },
-        config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
+        config: { 
+          imageConfig: { aspectRatio: "16:9", imageSize: "1K" },
+          tools: [{googleSearch: {}}]
+        },
       });
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
@@ -163,7 +165,7 @@ Output JSON.`;
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `In a professional tone, summarize how this code implements the paper's core methodology: ${implementation.explanation.slice(0, 400)}` }] }],
+        contents: [{ parts: [{ text: `Explain the technical implementation logic of this research methodology: ${implementation.explanation.slice(0, 400)}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -179,20 +181,19 @@ Output JSON.`;
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
     
-    const prompt = `CRITICAL FIX REQUIRED for "${analysis.title}".
-The following Python implementation failed with a traceback. 
+    const prompt = `CRITICAL REPAIR REQUIRED for "${analysis.title}".
 
-TRACEBACK:
+TRACEBACK OF FAILURE:
 ${errorLogs}
 
 PREVIOUS CODE:
 ${currentResult.code}
 
 INSTRUCTIONS:
-1. Carefully diagnose the error (e.g., NumPy shape mismatch, broadcasting issue, or initialization error).
-2. Rewrite the code and tests to fix this specific error while maintaining mathematical correctness.
-3. Be aggressive about shape-safety in NumPy operations.
-Output JSON.`;
+1. DIAGNOSE: Explicitly identify the root cause (e.g., NumPy dimension mismatch).
+2. REPAIR: Rewrite the Python code and tests to fix the error.
+3. CONVERGE: Ensure the code still implements the paper's math correctly.
+Output JSON with fields: code, explanation, tests.`;
 
     try {
       const response = await ai.models.generateContent({
