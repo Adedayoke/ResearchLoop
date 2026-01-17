@@ -8,120 +8,95 @@ export class GeminiService {
   }
 
   public isNotFoundError(error: any): boolean {
-    const message = error?.message || "";
-    return message.includes('Requested entity was not found') || message.includes('404');
-  }
-
-  public isTierError(error: any): boolean {
-    const message = error?.message || "";
-    return (
-      message.includes('403') || 
-      message.includes('PERMISSION_DENIED') || 
-      message.includes('permission denied') ||
-      message.includes('billing') ||
-      message.includes('quota')
-    );
+    return error?.message?.includes('Requested entity was not found') || false;
   }
 
   async analyzePaper(pdfBase64: string, isPro: boolean): Promise<PaperAnalysis> {
     const ai = this.getClient();
-    let model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
-    const tools = isPro ? [{ googleSearch: {} }] : undefined;
-
-    const generate = async (m: string) => {
-      const budget = m.includes('pro') ? 16000 : 8000;
-      const total = budget + 4000;
-
-      return await ai.models.generateContent({
-        model: m,
-        contents: {
-          parts: [
-            { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-            { text: "Analyze this research paper. Extract title, summary, methodology, and algorithm logic. Output JSON." }
-          ]
-        },
-        config: {
-          systemInstruction: "You are a world-class research engineer. Extract algorithm logic and return valid JSON.",
-          thinkingConfig: { thinkingBudget: budget },
-          maxOutputTokens: total,
-          responseMimeType: "application/json",
-          tools: m.includes('pro') ? tools : undefined,
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              authors: { type: Type.ARRAY, items: { type: Type.STRING } },
-              summary: { type: Type.STRING },
-              methodology: { type: Type.STRING },
-              algorithmPseudocode: { type: Type.STRING },
-              benchmarks: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    description: { type: Type.STRING }
-                  }
-                }
-              }
-            }
+    const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
+    
+    const response = await ai.models.generateContent({
+      model,
+      contents: [
+        {
+          inlineData: {
+            data: pdfBase64,
+            mimeType: "application/pdf"
           }
-        }
-      });
-    };
-
-    try {
-      let response;
-      try {
-        response = await generate(model);
-      } catch (err) {
-        if ((this.isTierError(err) || this.isNotFoundError(err)) && isPro) {
-          response = await generate("gemini-3-flash-preview");
-        } else throw err;
-      }
-
-      const text = response.text || '{}';
-      const data = JSON.parse(text);
-      const sources: GroundingSource[] = [];
-      const metadata = response.candidates?.[0]?.groundingMetadata;
-      if (metadata?.groundingChunks) {
-        metadata.groundingChunks.forEach((chunk: any) => {
-          if (chunk.web) sources.push({ title: chunk.web.title || "External Citation", uri: chunk.web.uri });
-        });
-      }
-      return { ...data, groundingSources: sources };
-    } catch (e: any) { throw e; }
-  }
-
-  async generateInitialImplementation(analysis: PaperAnalysis, isPro: boolean): Promise<ImplementationResult> {
-    const ai = this.getClient();
-    let model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
-    const prompt = `Implement "${analysis.title}" in Python 3.10 + NumPy. Include modular classes and full unit tests. Output JSON.`;
-
-    const config = (m: string) => {
-      const budget = m.includes('pro') ? 20000 : 10000;
-      return {
-        thinkingConfig: { thinkingBudget: budget },
-        maxOutputTokens: budget + 8000,
+        },
+        { text: "Analyze this research paper. Extract the title, summary, core methodology, and algorithm logic in pseudocode. Identify key metrics and benchmarks mentioned." }
+      ],
+      config: {
+        systemInstruction: "You are a world-class research engineer. Your goal is to extract technical logic from papers for implementation purposes. Return valid JSON.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            code: { type: Type.STRING },
-            explanation: { type: Type.STRING },
-            tests: { type: Type.STRING },
-            structuralParity: {
+            title: { type: Type.STRING },
+            authors: { type: Type.ARRAY, items: { type: Type.STRING } },
+            summary: { type: Type.STRING },
+            methodology: { type: Type.STRING },
+            algorithmPseudocode: { type: Type.STRING },
+            metrics: { type: Type.ARRAY, items: { type: Type.STRING } },
+            benchmarks: {
               type: Type.ARRAY,
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  feature: { type: Type.STRING },
-                  paperClaim: { type: Type.STRING },
-                  implementationDetail: { type: Type.STRING },
-                  status: { type: Type.STRING, enum: ['Verified', 'Partial', 'Conceptual'] }
+                  name: { type: Type.STRING },
+                  description: { type: Type.STRING }
                 }
               }
-            },
+            }
+          },
+          required: ["title", "summary", "methodology", "algorithmPseudocode"]
+        },
+        tools: isPro ? [{ googleSearch: {} }] : undefined
+      }
+    });
+
+    const data = JSON.parse(response.text || '{}');
+    const sources: GroundingSource[] = [];
+    
+    // Extract grounding sources if available
+    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    if (groundingMetadata?.groundingChunks) {
+      groundingMetadata.groundingChunks.forEach((chunk: any) => {
+        if (chunk.web) {
+          sources.push({ title: chunk.web.title || 'Source', uri: chunk.web.uri });
+        }
+      });
+    }
+
+    return { ...data, groundingSources: sources };
+  }
+
+  async generateInitialImplementation(analysis: PaperAnalysis, isPro: boolean): Promise<ImplementationResult> {
+    const ai = this.getClient();
+    const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: `Implement the research paper "${analysis.title}" in Python.
+      Methodology: ${analysis.methodology}
+      Pseudocode: ${analysis.algorithmPseudocode}
+      
+      Requirements:
+      1. Use Python 3.10 and NumPy.
+      2. Provide a clean, modular class implementation.
+      3. Include a comprehensive test suite (assertions) that verifies the core logic.
+      4. Map theoretical concepts to specific code blocks.
+      5. Identify structural parity between the paper's claims and the implementation.`,
+      config: {
+        systemInstruction: "You are a senior algorithm engineer. Synthesize high-performance, mathematically accurate Python code from research summaries. Use thinking to ensure mathematical correctness.",
+        thinkingConfig: { thinkingBudget: isPro ? 16000 : 8000 },
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            code: { type: Type.STRING, description: "The core implementation code." },
+            explanation: { type: Type.STRING, description: "Detailed technical explanation of the implementation." },
+            tests: { type: Type.STRING, description: "Standalone Python test code using assertions." },
             equationMappings: {
               type: Type.ARRAY,
               items: {
@@ -132,129 +107,104 @@ export class GeminiService {
                   explanation: { type: Type.STRING }
                 }
               }
+            },
+            structuralParity: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  feature: { type: Type.STRING },
+                  paperClaim: { type: Type.STRING },
+                  implementationDetail: { type: Type.STRING },
+                  status: { type: Type.STRING, enum: ["Verified", "Partial", "Conceptual"] }
+                }
+              }
             }
           }
         }
-      };
-    };
-
-    try {
-      let response;
-      try {
-        response = await ai.models.generateContent({ model, contents: prompt, config: config(model) });
-      } catch (err) {
-        if ((this.isTierError(err) || this.isNotFoundError(err)) && isPro) {
-          response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: prompt, config: config("gemini-3-flash-preview") });
-        } else throw err;
       }
-      const result = JSON.parse(response.text || '{}');
-      return { ...result, testResults: { passed: false, logs: "" }, iterationCount: 1, history: [] };
-    } catch (e: any) { throw e; }
-  }
+    });
 
-  async startResearcherChat(analysis: PaperAnalysis, implementation: ImplementationResult, isPro: boolean) {
-    const ai = this.getClient();
-    const systemInstruction = `You are the ResearchLoop Agent. You just implemented the paper "${analysis.title}". 
-    The methodology is: ${analysis.methodology}. 
-    The implementation code is: ${implementation.code}. 
-    Answer follow-up questions accurately and technically. Use markdown for code and math.`;
-
-    const tryConnect = async (m: string) => {
-      return ai.chats.create({
-        model: m,
-        config: { systemInstruction }
-      });
+    const result = JSON.parse(response.text || '{}');
+    return {
+      ...result,
+      testResults: { passed: false, logs: "" },
+      iterationCount: 1,
+      history: []
     };
-
-    try {
-      if (isPro) {
-        try {
-          const session = await tryConnect("gemini-3-pro-preview");
-          return { session, modelUsed: 'pro' };
-        } catch (e) {
-          console.warn("Pro Chat failed, falling back to Flash...");
-          const session = await tryConnect("gemini-3-flash-preview");
-          return { session, modelUsed: 'flash' };
-        }
-      } else {
-        const session = await tryConnect("gemini-3-flash-preview");
-        return { session, modelUsed: 'flash' };
-      }
-    } catch (e: any) { throw e; }
-  }
-
-  async generateArchitectureDiagram(analysis: PaperAnalysis, isPro: boolean): Promise<string> {
-    const ai = this.getClient();
-    const tryGenerate = async (m: string) => {
-      const response = await ai.models.generateContent({
-        model: m,
-        contents: { 
-          parts: [{ 
-            text: `Professional technical architecture diagram and data-flow schematic for the research paper: ${analysis.title}. 
-            Style: Academic 2D blueprint, technical vector illustration, high clarity.` 
-          }] 
-        },
-        config: { 
-          imageConfig: { 
-            aspectRatio: "16:9",
-            ...(m.includes('pro') ? { imageSize: "1K" } : {})
-          } 
-        },
-      });
-      const parts = response.candidates?.[0]?.content?.parts || [];
-      const imagePart = parts.find(p => p.inlineData);
-      return imagePart?.inlineData?.data ? `data:image/png;base64,${imagePart.inlineData.data}` : '';
-    };
-
-    try {
-      let result = '';
-      if (isPro) {
-        try {
-          result = await tryGenerate('gemini-3-pro-image-preview');
-        } catch (e) {
-          result = await tryGenerate('gemini-2.5-flash-image');
-        }
-      } else {
-        result = await tryGenerate('gemini-2.5-flash-image');
-      }
-      return result;
-    } catch (e: any) {
-      console.error("Architecture synthesis failed:", e.message);
-      return '';
-    }
-  }
-
-  async generateVocalExplanation(implementation: ImplementationResult): Promise<string> {
-    const ai = this.getClient();
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Synthesize a brief neural explanation for this implementation: ${implementation.explanation.slice(0, 300)}` }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-        },
-      });
-      return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || '';
-    } catch (e) { return ''; }
   }
 
   async refineImplementation(analysis: PaperAnalysis, currentResult: ImplementationResult, errorLogs: string, isPro: boolean): Promise<any> {
     const ai = this.getClient();
-    let model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
-    const prompt = `The current Python implementation for "${analysis.title}" failed with these errors: ${errorLogs}. Fix the logic. Return JSON.`;
+    const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: `The previous implementation of "${analysis.title}" failed during WASM verification.
+      
+      Error Logs:
+      ${errorLogs}
+      
+      Previous Code:
+      ${currentResult.code}
+      
+      Identify the logic error, fix it, and provide the corrected code and test suite.`,
+      config: {
+        systemInstruction: "You are an expert debugger. Analyze tracebacks, identify conceptual or syntactical errors in research implementations, and fix them. Ensure mathematical stability.",
+        thinkingConfig: { thinkingBudget: isPro ? 8000 : 4000 },
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            code: { type: Type.STRING },
+            explanation: { type: Type.STRING },
+            tests: { type: Type.STRING }
+          }
+        }
+      }
+    });
+
+    return JSON.parse(response.text || '{}');
+  }
+
+  async generateArchitectureDiagram(analysis: PaperAnalysis): Promise<string | undefined> {
+    const ai = this.getClient();
     try {
-      const budget = model.includes('pro') ? 24000 : 12000;
       const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: { 
-          thinkingConfig: { thinkingBudget: budget }, 
-          maxOutputTokens: budget + 5000,
-          responseMimeType: "application/json" 
+        model: "gemini-2.5-flash-image",
+        contents: `Create a professional technical architecture diagram and data-flow schematic for the research paper: "${analysis.title}". 
+        Style: Academic schematic, high-fidelity 2D blueprint, clear technical notations, vector-like clarity.`
+      });
+
+      const parts = response.candidates?.[0]?.content?.parts || [];
+      const imagePart = parts.find(p => p.inlineData);
+      return imagePart?.inlineData?.data ? `data:image/png;base64,${imagePart.inlineData.data}` : undefined;
+    } catch (e) {
+      console.error("Architecture visualization failed", e);
+      return undefined;
+    }
+  }
+
+  async generateVocalExplanation(implementation: ImplementationResult): Promise<string | undefined> {
+    const ai = this.getClient();
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: `Provide a concise, expert neural explanation of the following implementation logic: ${implementation.explanation.substring(0, 500)}`,
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Puck' }
+            }
+          }
         }
       });
-      return JSON.parse(response.text || '{}');
-    } catch (e: any) { throw e; }
+
+      return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    } catch (e) {
+      console.error("Audio synthesis failed", e);
+      return undefined;
+    }
   }
 }

@@ -32,8 +32,6 @@ const App: React.FC = () => {
       if (aistudio && typeof aistudio.hasSelectedApiKey === 'function') {
         const hasKey = await aistudio.hasSelectedApiKey();
         setIsPro(hasKey);
-      } else if (process.env.API_KEY) {
-        setIsPro(true);
       }
     };
     checkKeyStatus();
@@ -71,16 +69,12 @@ const App: React.FC = () => {
 
   const handleError = async (err: any) => {
     if (geminiRef.current.isNotFoundError(err)) {
-      setError("Active API key session lost or model not found. Attempting recovery...");
+      setError("Active API key session lost or invalid. Please re-select your key.");
       await triggerKeySelection();
-    } else if (geminiRef.current.isTierError(err)) {
-      setError("Permission Denied: Tier restrictions on Reasoning or Grounding. Falling back...");
-      setIsPro(false);
-      setState(AppState.ERROR);
     } else {
       setError(err.message || "Autonomous loop failed.");
-      setState(AppState.ERROR);
     }
+    setState(AppState.ERROR);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,14 +93,14 @@ const App: React.FC = () => {
         const base64 = (event.target?.result as string).split(',')[1];
         
         try {
-          setCurrentLog(isPro ? "Requesting Pro reasoning cluster..." : "Analyzing paper structure...");
+          setCurrentLog(isPro ? "Requesting Pro reasoning (Adaptive Tier)..." : "Analyzing algorithm structure...");
           const paperData = await geminiRef.current.analyzePaper(base64, isPro);
           setAnalysis(paperData);
           updateStep(AppState.ANALYZING, 'success');
           
           setState(AppState.IMPLEMENTING);
           updateStep(AppState.IMPLEMENTING, 'loading');
-          setCurrentLog("Translating theoretical logic to Python classes...");
+          setCurrentLog("Synthesizing research into runnable Python code...");
           let result = await geminiRef.current.generateInitialImplementation(paperData, isPro);
           updateStep(AppState.IMPLEMENTING, 'success');
 
@@ -117,7 +111,7 @@ const App: React.FC = () => {
           while (!passed && iteration <= 5) {
             setState(AppState.TESTING);
             updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}`);
-            setCurrentLog(`Runtime: Testing logic stability (Iteration ${iteration})...`);
+            setCurrentLog(`Sandbox: Testing logic stability (Iteration ${iteration})...`);
             
             const runResults = await executionService.runPython(result.code, result.tests);
             result.testResults = runResults;
@@ -134,8 +128,8 @@ const App: React.FC = () => {
             if (!passed) {
               if (iteration === 5) break;
               setState(AppState.DEBUGGING);
-              updateStep(AppState.DEBUGGING, 'loading', `Refining logic cycle ${iteration}`);
-              setCurrentLog(`Agent: Resolving conceptual misalignments...`);
+              updateStep(AppState.DEBUGGING, 'loading', `Refining cycle ${iteration}`);
+              setCurrentLog(`Agent: Repairing code via diagnostic feedback...`);
               const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
               result = { ...result, ...refined, iterationCount: iteration + 1 };
               iteration++;
@@ -144,20 +138,21 @@ const App: React.FC = () => {
 
           result.history = history;
 
-          // Multimodal triggers (Non-blocking but visible)
-          setCurrentLog("Synthesizing technical blueprints and audio maps...");
-          
-          setState(AppState.VISUALIZING);
-          try {
-            const img = await geminiRef.current.generateArchitectureDiagram(paperData, isPro);
-            if (img) result.architectureImage = img;
-          } catch (imgErr) { console.warn("Viz error suppressed."); }
-          
-          setState(AppState.VOCALIZING);
-          try {
-            const aud = await geminiRef.current.generateVocalExplanation(result);
-            if (aud) result.audioData = aud;
-          } catch (audErr) { console.warn("Vocal error suppressed."); }
+          // Multimodal assets are strictly non-blocking
+          if (isPro) {
+            setState(AppState.VISUALIZING);
+            updateStep(AppState.COMPLETED, 'loading');
+            setCurrentLog("Optional: Synthesis of technical blueprints...");
+            try {
+              const img = await geminiRef.current.generateArchitectureDiagram(paperData);
+              if (img) result.architectureImage = img;
+            } catch (imgErr) { console.warn("Image synthesis skipped:", imgErr); }
+            
+            setState(AppState.VOCALIZING);
+            try {
+              result.audioData = await geminiRef.current.generateVocalExplanation(result);
+            } catch (audErr) { console.warn("Audio synthesis skipped:", audErr); }
+          }
 
           setState(AppState.COMPLETED);
           updateStep(AppState.TESTING, passed ? 'success' : 'error');
@@ -180,6 +175,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-peach-100 text-github-black font-sans selection:bg-peach-accent selection:text-white relative overflow-x-hidden">
+      {/* Dynamic Background Grid */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.03] z-0" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
       
       {activeOverlay && (
@@ -243,7 +239,7 @@ const App: React.FC = () => {
                 Automate the <span className="font-light not-italic">Bridge</span>.
               </h1>
               <p className="text-xl md:text-2xl text-github-black/60 font-medium max-w-2xl leading-snug">
-                Autonomous research paper implementation. {isPro ? 'Pro Reasoning & Imaging enabled.' : 'Standard reasoning loop active.'}
+                Autonomous research paper to code synthesis. {isPro ? 'Pro Mode: Deep reasoning enabled (Adaptive fallback to Flash if key tier restricted).' : 'Standard Loop active.'}
               </p>
             </div>
 
@@ -256,8 +252,8 @@ const App: React.FC = () => {
                     <Icons.Upload />
                   </div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold uppercase tracking-tight">Drop PDF to start implementation</p>
-                    <p className="text-github-black/40 text-sm mt-2 font-medium">Supported: All Academic PDF formats</p>
+                    <p className="text-2xl font-bold uppercase tracking-tight">Drop PDF to start {isPro ? 'Pro' : 'Standard'} loop</p>
+                    <p className="text-github-black/40 text-sm mt-2 font-medium">Powered by Gemini 3</p>
                   </div>
                 </div>
               </div>
@@ -270,20 +266,20 @@ const App: React.FC = () => {
         )}
 
         {state === AppState.COMPLETED && analysis && implementation && (
-          <ResultsUI analysis={analysis} implementation={implementation} isPro={isPro} onReset={handleReset} />
+          <ResultsUI analysis={analysis} implementation={implementation} onReset={handleReset} />
         )}
 
         {state === AppState.ERROR && (
           <div className="max-w-2xl mx-auto mt-20 space-y-8 animate-in slide-in-from-bottom-10">
             <div className="bg-white border border-github-black p-12 text-center space-y-6 shadow-[12px_12px_0px_0px_#0d1117]">
-              <h2 className="text-2xl font-bold uppercase tracking-tighter text-red-600">Loop Error</h2>
+              <h2 className="text-2xl font-bold uppercase tracking-tighter text-red-600">Loop Collision</h2>
               <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">
                 {error}
               </div>
               <div className="flex flex-col md:flex-row gap-4">
-                 <button onClick={handleReset} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs hover:bg-red-600 transition-colors">Reset</button>
-                 <button onClick={() => { setIsPro(false); handleReset(); }} className="flex-1 py-4 border border-github-black text-github-black font-bold uppercase tracking-widest text-xs hover:bg-peach-100 transition-colors">Standard Mode</button>
-                 <button onClick={triggerKeySelection} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs shadow-[4px_4px_0px_0px_#000]">Select Key</button>
+                 <button onClick={handleReset} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs hover:bg-red-600 transition-colors">Reset Loop</button>
+                 <button onClick={() => { setIsPro(false); handleReset(); }} className="flex-1 py-4 border border-github-black text-github-black font-bold uppercase tracking-widest text-xs hover:bg-peach-100 transition-colors">Retry Standard Mode</button>
+                 <button onClick={triggerKeySelection} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs shadow-[4px_4px_0px_0px_#000]">Update API Key</button>
               </div>
             </div>
           </div>
