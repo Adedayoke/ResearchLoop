@@ -27,14 +27,13 @@ const App: React.FC = () => {
     window.location.hostname.includes('aistudio.google.com') || 
     window.location.hostname.includes('web-highlight') ||
     window.location.href.includes('preview') ||
-    window.location.hostname.includes('localhost'); // Helpful for local testing with the same logic
+    window.location.hostname.includes('localhost'); 
 
   useEffect(() => {
     executionService.init().catch(console.error);
     const saved = JSON.parse(localStorage.getItem('research_loop_saved') || '[]');
     setSavedProjects(saved);
 
-    // Auto-enable Pro in Studio since keys are provided
     if (isStudio) {
       setIsPro(true);
     }
@@ -81,80 +80,85 @@ const App: React.FC = () => {
       reader.onload = async (event) => {
         const base64 = (event.target?.result as string).split(',')[1];
         
-        setCurrentLog(isPro ? "Using Pro Reasoning for deep analysis..." : "Analyzing algorithm structure...");
-        const paperData = await geminiRef.current.analyzePaper(base64, isPro);
-        setAnalysis(paperData);
-        updateStep(AppState.ANALYZING, 'success');
-        
-        setState(AppState.IMPLEMENTING);
-        updateStep(AppState.IMPLEMENTING, 'loading');
-        setCurrentLog("Synthesizing research into runnable Python code...");
-        let result = await geminiRef.current.generateInitialImplementation(paperData, isPro);
-        updateStep(AppState.IMPLEMENTING, 'success');
-
-        let passed = false;
-        let iteration = 1;
-        const history: CodeVersion[] = [];
-
-        while (!passed && iteration <= 8) {
-          setState(AppState.TESTING);
-          updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}`);
-          setCurrentLog(`Sandbox: Testing logic stability (Iteration ${iteration})...`);
+        try {
+          setCurrentLog(isPro ? "Using Pro Reasoning for deep analysis..." : "Analyzing algorithm structure...");
+          const paperData = await geminiRef.current.analyzePaper(base64, isPro);
+          setAnalysis(paperData);
+          updateStep(AppState.ANALYZING, 'success');
           
-          const runResults = await executionService.runPython(result.code, result.tests);
-          result.testResults = runResults;
-          passed = runResults.passed;
+          setState(AppState.IMPLEMENTING);
+          updateStep(AppState.IMPLEMENTING, 'loading');
+          setCurrentLog("Synthesizing research into runnable Python code...");
+          let result = await geminiRef.current.generateInitialImplementation(paperData, isPro);
+          updateStep(AppState.IMPLEMENTING, 'success');
 
-          history.push({
-            iteration,
-            code: result.code,
-            explanation: result.explanation,
-            error: passed ? undefined : runResults.logs,
-            stabilityScore: passed ? 100 : Math.min(95, 20 + (iteration * 10))
-          });
+          let passed = false;
+          let iteration = 1;
+          const history: CodeVersion[] = [];
 
-          if (!passed) {
-            if (iteration === 8) break;
-            setState(AppState.DEBUGGING);
-            updateStep(AppState.DEBUGGING, 'loading', `Refining cycle ${iteration}`);
-            setCurrentLog(`Agent: Repairing code via diagnostic feedback...`);
-            const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
-            result = { ...result, ...refined, iterationCount: iteration + 1 };
-            iteration++;
+          while (!passed && iteration <= 8) {
+            setState(AppState.TESTING);
+            updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}`);
+            setCurrentLog(`Sandbox: Testing logic stability (Iteration ${iteration})...`);
+            
+            const runResults = await executionService.runPython(result.code, result.tests);
+            result.testResults = runResults;
+            passed = runResults.passed;
+
+            history.push({
+              iteration,
+              code: result.code,
+              explanation: result.explanation,
+              error: passed ? undefined : runResults.logs,
+              stabilityScore: passed ? 100 : Math.min(95, 20 + (iteration * 10))
+            });
+
+            if (!passed) {
+              if (iteration === 8) break;
+              setState(AppState.DEBUGGING);
+              updateStep(AppState.DEBUGGING, 'loading', `Refining cycle ${iteration}`);
+              setCurrentLog(`Agent: Repairing code via diagnostic feedback...`);
+              const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
+              result = { ...result, ...refined, iterationCount: iteration + 1 };
+              iteration++;
+            }
           }
+
+          result.history = history;
+
+          if (isPro) {
+            setState(AppState.VISUALIZING);
+            updateStep(AppState.COMPLETED, 'loading');
+            setCurrentLog("Synthesizing technical architecture imagery...");
+            try {
+              const img = await geminiRef.current.generateArchitectureDiagram(paperData);
+              if (img) result.architectureImage = img;
+            } catch (imgErr) {
+              console.warn("Visualizer failed", imgErr);
+            }
+            
+            setState(AppState.VOCALIZING);
+            setCurrentLog("Generating audio theory map...");
+            try {
+              result.audioData = await geminiRef.current.generateVocalExplanation(result);
+            } catch (audErr) {
+              console.warn("Vocalizer failed", audErr);
+            }
+          }
+
+          setState(AppState.COMPLETED);
+          updateStep(AppState.TESTING, passed ? 'success' : 'error');
+          updateStep(AppState.DEBUGGING, 'success');
+          updateStep(AppState.COMPLETED, 'success');
+          setImplementation(result);
+
+          const newSaved = [{ title: paperData.title, timestamp: Date.now(), isPro }, ...savedProjects.slice(0, 9)];
+          localStorage.setItem('research_loop_saved', JSON.stringify(newSaved));
+          setSavedProjects(newSaved);
+        } catch (innerErr: any) {
+          setError(innerErr.message);
+          setState(AppState.ERROR);
         }
-
-        result.history = history;
-
-        if (isPro) {
-          setState(AppState.VISUALIZING);
-          updateStep(AppState.COMPLETED, 'loading');
-          setCurrentLog("Synthesizing technical architecture imagery...");
-          try {
-            const img = await geminiRef.current.generateArchitectureDiagram(paperData);
-            if (img) result.architectureImage = img;
-          } catch (imgErr) {
-            console.warn("Visualizer failed", imgErr);
-          }
-          
-          setState(AppState.VOCALIZING);
-          setCurrentLog("Generating audio theory map...");
-          try {
-            result.audioData = await geminiRef.current.generateVocalExplanation(result);
-          } catch (audErr) {
-            console.warn("Vocalizer failed", audErr);
-          }
-        }
-
-        setState(AppState.COMPLETED);
-        updateStep(AppState.TESTING, passed ? 'success' : 'error');
-        updateStep(AppState.DEBUGGING, 'success');
-        updateStep(AppState.COMPLETED, 'success');
-        setImplementation(result);
-
-        const newSaved = [{ title: paperData.title, timestamp: Date.now(), isPro }, ...savedProjects.slice(0, 9)];
-        localStorage.setItem('research_loop_saved', JSON.stringify(newSaved));
-        setSavedProjects(newSaved);
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
@@ -255,11 +259,15 @@ const App: React.FC = () => {
           <div className="max-w-2xl mx-auto mt-20 space-y-8">
             <div className="bg-white border border-github-black p-12 text-center space-y-6 shadow-[12px_12px_0px_0px_#0d1117]">
               <h2 className="text-2xl font-bold uppercase tracking-tighter text-red-600">Loop Collision</h2>
-              <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">{error}</div>
+              <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">
+                {error?.includes('PRO_PERMISSION_ERROR') ? 
+                  "The current API key does not have access to Pro Imaging features. Please ensure your project has billing enabled or switch to a different key." : 
+                  error}
+              </div>
               <div className="flex gap-4">
                  <button onClick={handleReset} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs">Reset Loop</button>
-                 {!isStudio && error?.includes('API_KEY_ERROR') && (
-                   <button onClick={handleProToggle} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs">Update API Key</button>
+                 {!isStudio && (error?.includes('PRO_PERMISSION_ERROR') || error?.includes('API_KEY_NOT_FOUND')) && (
+                   <button onClick={() => (window as any).aistudio.openSelectKey()} className="flex-1 py-4 bg-peach-accent text-white font-bold uppercase tracking-widest text-xs">Update API Key</button>
                  )}
               </div>
             </div>

@@ -4,20 +4,23 @@ import { PaperAnalysis, ImplementationResult } from "../types";
 
 export class GeminiService {
   private getClient() {
-    // Priority: system process.env -> window.process.env -> empty string
-    const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) 
-      ? process.env.API_KEY 
-      : (window as any).process?.env?.API_KEY;
-    
-    return new GoogleGenAI({ apiKey: apiKey || '' });
+    // Exclusively use process.env.API_KEY as per guidelines
+    return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   }
 
   private handleError(error: any) {
     console.error("Gemini API Error:", error);
-    if (error?.message?.includes('Requested entity was not found') || error?.message?.includes('API_KEY_INVALID')) {
-      throw new Error("API_KEY_ERROR: A valid paid API key is required for Pro features. Please check your billing at ai.google.dev/gemini-api/docs/billing.");
+    const message = error?.message || "";
+    
+    if (message.includes('403') || message.includes('PERMISSION_DENIED')) {
+      throw new Error("PRO_PERMISSION_ERROR: The selected API key does not have permission for this model. This typically requires a paid GCP project with billing enabled for Pro features.");
     }
-    throw new Error(error?.message || "An unexpected error occurred during reasoning.");
+    
+    if (message.includes('Requested entity was not found') || message.includes('404')) {
+      throw new Error("API_KEY_NOT_FOUND: The requested model was not found or the API key is invalid. Please select a valid key from a paid project.");
+    }
+
+    throw new Error(message || "An unexpected error occurred during reasoning.");
   }
 
   async analyzePaper(pdfBase64: string, isPro: boolean): Promise<PaperAnalysis> {
@@ -141,7 +144,7 @@ export class GeminiService {
   async generateArchitectureDiagram(analysis: PaperAnalysis): Promise<string> {
     const ai = this.getClient();
     try {
-      // gemini-3-pro-image-preview for high-quality architectural schema
+      // Create a fresh instance for imaging to ensure latest key
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: {
@@ -149,14 +152,12 @@ export class GeminiService {
         },
         config: { 
           imageConfig: { aspectRatio: "16:9", imageSize: "2K" },
-          // Fix: Use 'googleSearch' instead of 'google_search' as 'google_search' is not a valid property in ToolUnion.
           tools: [{googleSearch: {}}] 
         },
       });
       
       const parts = response.candidates?.[0]?.content?.parts;
       if (parts) {
-        // Iterate through all parts as model might return text AND image
         for (const part of parts) {
           if (part.inlineData) {
             return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
@@ -164,13 +165,19 @@ export class GeminiService {
         }
       }
       return '';
-    } catch (e) {
-      console.error("Visualizer Error:", e);
-      // Fallback to simpler model if Pro fails or is restricted in the environment
+    } catch (e: any) {
+      console.warn("Pro Visualizer failed, attempting fallback...", e);
+      
+      // If permission is denied for Pro imaging, we catch it but don't crash the loop
+      // We still handle the error reporting in the main flow if needed
+      if (e?.message?.includes('403') || e?.message?.includes('PERMISSION_DENIED')) {
+          console.error("Imaging permission denied. User may need to select a billing-enabled key.");
+      }
+
       try {
         const fallback = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: `Architecture diagram for ${analysis.title}` }] }
+          contents: { parts: [{ text: `Technical architecture diagram for research paper: ${analysis.title}` }] }
         });
         const part = fallback.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
         return part ? `data:image/png;base64,${part.inlineData?.data}` : '';
@@ -188,7 +195,6 @@ export class GeminiService {
         contents: [{ parts: [{ text: `Explain this implementation: ${implementation.explanation.slice(0, 500)}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
-          // Fix: Wrap 'voiceName' inside 'prebuiltVoiceConfig' as per the latest SDK guidelines.
           speechConfig: { 
             voiceConfig: { 
               prebuiltVoiceConfig: { voiceName: 'Kore' } 
