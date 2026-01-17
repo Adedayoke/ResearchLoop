@@ -73,10 +73,10 @@ const App: React.FC = () => {
         let iteration = 1;
         const history: CodeVersion[] = [];
 
-        while (!passed && iteration <= 6) {
+        while (!passed && iteration <= 8) { // Increased iterations to 8 for better convergence
           setState(AppState.TESTING);
           updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}...`);
-          addLog(`Verifying logical parity (Iteration ${iteration})...`);
+          addLog(`Iteration ${iteration}: Verifying logical parity in WASM...`);
           
           const runResults = await executionService.runPython(result.code, result.tests);
           result.testResults = runResults;
@@ -87,14 +87,18 @@ const App: React.FC = () => {
             code: result.code,
             explanation: result.explanation,
             error: passed ? undefined : runResults.logs,
-            matchScore: (result as any).matchScore || (passed ? 99.9 : 70 + iteration * 4)
+            matchScore: (result as any).matchScore || (passed ? 99.9 : 50 + iteration * 5)
           });
 
           if (!passed) {
-            if (iteration === 6) throw new Error("Max iterations reached without convergence.");
+            if (iteration === 8) {
+              // Final attempt failed, but we show the results anyway to let user see where it got
+              setImplementation({ ...result, history });
+              throw new Error("Maximum autonomous iterations reached (8/8). The system could not converge on a valid implementation. Review the Inspector for the final traceback.");
+            }
             setState(AppState.DEBUGGING);
-            updateStep(AppState.DEBUGGING, 'loading', `Debugging cycle ${iteration}...`);
-            addLog(`Repairing logic based on traceback...`);
+            updateStep(AppState.DEBUGGING, 'loading', `Cycle ${iteration}...`);
+            addLog(`Repairing logic using traceback feedback...`);
             const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
             result = { ...result, ...refined, iterationCount: iteration + 1 };
             iteration++;
@@ -105,6 +109,7 @@ const App: React.FC = () => {
 
         if (isPro) {
           setState(AppState.VISUALIZING);
+          updateStep(AppState.COMPLETED, 'loading', 'Visualizing architecture...');
           addLog("Generating AI Architecture Diagram...");
           result.architectureImage = await geminiRef.current.generateArchitectureDiagram(paperData);
           
@@ -148,7 +153,7 @@ const App: React.FC = () => {
               <div className="space-y-12">
                 <h2 className="text-6xl md:text-8xl font-medium tracking-tight uppercase leading-none">THE ARCHIVE</h2>
                 <div className="border border-github-black divide-y divide-github-black">
-                  {savedProjects.map((p, i) => (
+                  {savedProjects.length > 0 ? savedProjects.map((p, i) => (
                     <div key={i} className="p-8 hover:bg-white transition-colors flex justify-between items-center">
                       <div className="flex items-center gap-3">
                         <span className="text-xl font-bold uppercase tracking-tight">{p.title}</span>
@@ -156,7 +161,9 @@ const App: React.FC = () => {
                       </div>
                       <span className="text-[10px] font-black uppercase tracking-widest opacity-30">Verified {new Date(p.timestamp).toLocaleDateString()}</span>
                     </div>
-                  ))}
+                  )) : (
+                    <div className="p-20 text-center text-[10px] font-black uppercase opacity-20">No archived loops found</div>
+                  )}
                 </div>
               </div>
             )}
@@ -231,10 +238,22 @@ const App: React.FC = () => {
         )}
 
         {state === AppState.ERROR && (
-          <div className="max-w-xl mx-auto mt-20 p-12 bg-white border border-github-black text-center space-y-6 shadow-[12px_12px_0px_0px_#0d1117]">
-            <h2 className="text-2xl font-bold uppercase tracking-tighter">Loop Terminated</h2>
-            <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-40">{error}</div>
-            <button onClick={() => setState(AppState.IDLE)} className="w-full py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs hover:invert transition-all">Restart System</button>
+          <div className="max-w-2xl mx-auto mt-20 space-y-8 animate-in fade-in slide-in-from-bottom-4">
+            <div className="bg-white border border-github-black p-12 text-center space-y-6 shadow-[12px_12px_0px_0px_#0d1117]">
+              <h2 className="text-2xl font-bold uppercase tracking-tighter">Loop Terminated</h2>
+              <div className="bg-red-50 p-6 border border-red-100 font-mono text-xs text-red-700 text-left overflow-auto max-h-48">{error}</div>
+              <div className="flex gap-4">
+                 <button onClick={() => setState(AppState.IDLE)} className="flex-1 py-4 bg-github-black text-peach-100 font-bold uppercase tracking-widest text-xs hover:invert transition-all">New Paper</button>
+                 {implementation && (
+                   <button onClick={() => setState(AppState.COMPLETED)} className="flex-1 py-4 border border-github-black text-github-black font-bold uppercase tracking-widest text-xs hover:bg-peach-100 transition-all">View Partial Results</button>
+                 )}
+              </div>
+            </div>
+            {implementation && (
+              <p className="text-center text-[10px] font-black uppercase tracking-widest text-github-black/40">
+                The agent failed to converge, but logic can still be inspected.
+              </p>
+            )}
           </div>
         )}
       </main>

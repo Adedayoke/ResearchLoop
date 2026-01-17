@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { PaperAnalysis, ImplementationResult } from '../types';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { marked } from 'marked';
 
 interface ResultsUIProps {
@@ -135,6 +135,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
           {activeTab === 'grounding' && (
             <div className="space-y-12 animate-in fade-in">
               <h2 className="text-4xl font-bold tracking-tighter uppercase">Grounding Sources</h2>
+              <p className="text-github-black/60 font-medium italic">Validated against real-world implementations and community repositories via Google Search.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {analysis.groundingSources?.map((source, i) => (
                   <a key={i} href={source.uri} target="_blank" rel="noopener noreferrer" className="p-8 bg-white border border-github-black/10 hover:border-peach-accent transition-all group">
@@ -162,9 +163,42 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
 
           {activeTab === 'code' && (
             <div className="space-y-12 animate-in fade-in">
+               <div className="flex justify-between items-center border-b border-github-black/10 pb-6 mb-8">
+                  <h2 className="text-4xl font-bold tracking-tighter uppercase">Verified Logic</h2>
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 px-4 py-1">Standardized NumPy/Python 3.10</span>
+               </div>
               <div className="bg-github-black p-10 border border-github-border rounded-lg shadow-inner overflow-hidden">
                 <pre className="overflow-x-auto"><code className="font-mono text-sm text-github-text leading-relaxed">{implementation.code}</code></pre>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'inspector' && (
+            <div className="space-y-12 animate-in fade-in">
+               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  <div className="lg:col-span-2 space-y-6">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-peach-accent">Terminal Log</h3>
+                    <div className="bg-github-black p-6 border border-github-border rounded-lg h-[500px] overflow-y-auto">
+                      <pre className="font-mono text-[10px] text-github-text leading-relaxed whitespace-pre-wrap">{implementation.testResults.logs || 'Initializing isolated runtime environment...'}</pre>
+                    </div>
+                  </div>
+                  <div className="space-y-6">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-peach-accent">Memory Snapshot</h3>
+                    <div className="border border-github-black divide-y divide-github-black/10 h-[500px] overflow-y-auto bg-white">
+                      {implementation.testResults.variables?.length ? implementation.testResults.variables.map((v, i) => (
+                        <div key={i} className="p-4 bg-white hover:bg-peach-50 transition-colors">
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="font-mono text-xs font-bold text-github-black">{v.name}</span>
+                            <span className="text-[9px] font-black uppercase opacity-30">{v.type}</span>
+                          </div>
+                          <div className="font-mono text-[10px] text-github-black/60 truncate">{v.value}</div>
+                        </div>
+                      )) : (
+                        <div className="p-8 text-center text-[10px] font-black uppercase opacity-20">No Variables Captured</div>
+                      )}
+                    </div>
+                  </div>
+               </div>
             </div>
           )}
 
@@ -183,22 +217,66 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation }) => {
                   </ResponsiveContainer>
                 </div>
               </div>
+
+              <div className="space-y-8 mt-12 pt-12 border-t border-github-black/10">
+                <h4 className="text-sm font-black uppercase tracking-widest">Thought Signature History</h4>
+                {implementation.history.map((h, i) => (
+                  <div key={i} className="p-8 border border-github-black/5 bg-white space-y-4 group hover:border-peach-accent/30 transition-all">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase tracking-tight">Cycle 0{h.iteration}</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-peach-accent">{h.matchScore.toFixed(1)}% Convergence</span>
+                    </div>
+                    <p className="text-sm text-github-black/70 leading-relaxed font-medium italic">"{h.explanation}"</p>
+                    {h.error && (
+                      <div className="mt-4 p-4 bg-red-50 border border-red-100 font-mono text-[10px] text-red-700 overflow-x-auto">
+                        <span className="font-bold uppercase mb-2 block text-red-900">Traceback Repair Log:</span>
+                        {h.error}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
           {activeTab === 'benchmarks' && (
             <div className="space-y-12 animate-in fade-in">
-               <div className="h-[500px] w-full pt-10">
+              <div className="max-w-3xl space-y-4">
+                <h2 className="text-4xl font-bold tracking-tighter uppercase">Verification Parity</h2>
+                <p className="text-github-black/60 font-medium italic">Comparison of the paper's claimed performance against the Runtime implementation verified in WASM.</p>
+              </div>
+               <div className="h-[400px] w-full pt-10 border-b border-github-black/10 pb-16">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={implementation.finalBenchmarkComparison} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
                     <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 10, fontWeight: 700 }} />
                     <YAxis tick={{ fontSize: 10, fontWeight: 700 }} />
-                    <Tooltip />
-                    <Bar dataKey="paperValue" name="PAPER" fill="#0d1117" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="implValue" name="VERIFIED" fill="#d97757" radius={[4, 4, 0, 0]} />
+                    <Tooltip contentStyle={{ fontSize: '10px', fontWeight: 'bold', border: '1px solid #0d1117' }} />
+                    <Bar dataKey="paperValue" name="PAPER CLAIM" fill="#0d1117" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="implValue" name="VERIFIED RUNTIME" fill="#d97757" radius={[2, 2, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+
+              <div className="space-y-6 mt-12">
+                <h4 className="text-sm font-black uppercase tracking-widest">Verification Table</h4>
+                <div className="border border-github-black divide-y divide-github-black">
+                  {implementation.finalBenchmarkComparison.map((b, i) => (
+                    <div key={i} className="flex justify-between items-center p-8 bg-white hover:bg-peach-50 transition-colors">
+                      <span className="text-xl font-bold uppercase tracking-tighter">{b.name}</span>
+                      <div className="flex gap-16 text-right">
+                        <div>
+                          <div className="text-[9px] font-black uppercase opacity-30 mb-1">Paper Claim</div>
+                          <div className="text-2xl font-mono">{b.paperValue}</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] font-black uppercase text-peach-accent mb-1">Verified Value</div>
+                          <div className="text-2xl font-mono font-bold text-peach-accent">{b.implValue.toFixed(4)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

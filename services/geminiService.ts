@@ -4,7 +4,6 @@ import { PaperAnalysis, ImplementationResult } from "../types";
 
 export class GeminiService {
   private getClient() {
-    // Always recreate to pick up latest API Key from the selector dialog
     const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : (window as any).process?.env?.API_KEY;
     return new GoogleGenAI({ apiKey: apiKey || '' });
   }
@@ -31,7 +30,7 @@ export class GeminiService {
         contents: {
           parts: [
             { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-            { text: "Perform deep multimodal analysis on this PDF. Extract primary algorithm, LaTeX equations, and benchmarks. If tools are available, search for real-world implementations or known issues of this specific paper to improve implementation accuracy. Output JSON." }
+            { text: "Perform deep multimodal analysis. Extract primary algorithm, LaTeX equations, and benchmarks. If tools are available, search for real-world implementations to verify mathematical constants or hidden hyperparameters. Output JSON." }
           ]
         },
         config: {
@@ -64,8 +63,6 @@ export class GeminiService {
       });
 
       const data = JSON.parse(response.text || '{}');
-      
-      // Extract grounding sources
       const sources: any[] = [];
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       if (chunks) {
@@ -85,7 +82,15 @@ export class GeminiService {
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
     
-    const prompt = `Act as a world-class research engineer. Implement "${analysis.title}" in functional Python (NumPy only). Ensure mathematical parity. Output JSON.`;
+    const prompt = `Act as a world-class Senior Research Engineer. 
+Implement the core logic of "${analysis.title}" using ONLY Python 3.10 and NumPy. 
+STRICT REQUIREMENTS:
+1. Ensure all mathematical operations match the paper methodology.
+2. Use explicit NumPy broadcasting to avoid shape errors.
+3. Include internal validation checks (asserts) for matrix dimensions.
+4. The code must be self-contained (no external data files).
+5. Output the 'tests' field as a runnable script that verifies the implementation logic against common edge cases.
+Output JSON.`;
 
     try {
       const response = await ai.models.generateContent({
@@ -141,11 +146,10 @@ export class GeminiService {
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: {
-          parts: [{ text: `A clean, professional architecture diagram for the ${analysis.title} algorithm. Minimalist style, tech-blue and peach colors, showing data flow and neural network layers. High quality 1K.` }],
+          parts: [{ text: `A clean, professional scientific architecture diagram for ${analysis.title}. Neural network layers, flow arrows, high-quality technical visualization, white background, peach and dark-blue palette.` }],
         },
         config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
       });
-      
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -161,7 +165,7 @@ export class GeminiService {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Explain the implementation in a professional, senior engineer voice: ${implementation.explanation.slice(0, 500)}` }] }],
+        contents: [{ parts: [{ text: `In a professional, clear voice, explain how this implementation maps to the research equations: ${implementation.explanation.slice(0, 500)}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -177,13 +181,38 @@ export class GeminiService {
   async refineImplementation(analysis: PaperAnalysis, currentResult: ImplementationResult, errorLogs: string, isPro: boolean): Promise<any> {
     const ai = this.getClient();
     const model = isPro ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
+    
+    const prompt = `CRITICAL REPAIR REQUIRED. 
+The previous Python implementation for "${analysis.title}" failed during runtime.
+RUNTIME LOGS:
+${errorLogs}
+
+PREVIOUS CODE:
+${currentResult.code}
+
+YOUR TASK:
+1. Analyze the traceback carefully. 
+2. Identify the root cause (e.g., NumPy dimension mismatch, missing initialization, or incorrect equation translation).
+3. Provide a fixed version of the code and tests. 
+4. Explain the fix concisely.
+Output JSON.`;
+
     try {
       const response = await ai.models.generateContent({
         model,
-        contents: `Previous implementation for "${analysis.title}" failed. Logs: ${errorLogs}. Fix it.`,
+        contents: prompt,
         config: {
-          thinkingConfig: { thinkingBudget: isPro ? 24000 : 16000 },
-          responseMimeType: "application/json"
+          thinkingConfig: { thinkingBudget: isPro ? 32768 : 24576 },
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              code: { type: Type.STRING },
+              explanation: { type: Type.STRING },
+              tests: { type: Type.STRING },
+              matchScore: { type: Type.NUMBER }
+            }
+          }
         }
       });
       return JSON.parse(response.text || '{}');
