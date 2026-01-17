@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { PaperAnalysis, ImplementationResult } from "../types";
+import { PaperAnalysis, ImplementationResult, GroundingSource } from "../types";
 
 export class GeminiService {
   private getClient() {
@@ -39,11 +39,11 @@ export class GeminiService {
         contents: {
           parts: [
             { inlineData: { data: pdfBase64, mimeType: "application/pdf" } },
-            { text: "Analyze this research paper. IMPORTANT: The 'title' field must contain ONLY the headline. REMOVE authors and metadata. Extract methodology. Output JSON." }
+            { text: "Analyze this research paper. IMPORTANT: Use Google Search to verify external benchmarks, find the original publication context, and list related citations to provide grounding sources. The 'title' field must contain ONLY the headline. REMOVE authors and metadata from the title. Extract methodology. Output JSON." }
           ]
         },
         config: {
-          systemInstruction: "You are a research engineer. Extract logic and return a clean, metadata-free paper title.",
+          systemInstruction: "You are a research engineer. Extract logic and return a clean, metadata-free paper title. You MUST use Google Search to find external benchmarks and grounding references related to the paper topic.",
           thinkingConfig: { thinkingBudget: isPro ? 12000 : 4000 },
           responseMimeType: "application/json",
           tools,
@@ -71,11 +71,18 @@ export class GeminiService {
       });
 
       const data = JSON.parse(response.text || '{}');
-      const sources: any[] = [];
-      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-      if (chunks) {
-        chunks.forEach((chunk: any) => {
-          if (chunk.web) sources.push({ title: chunk.web.title, uri: chunk.web.uri });
+      const sources: GroundingSource[] = [];
+      const metadata = response.candidates?.[0]?.groundingMetadata;
+      
+      // Extracting grounding chunks for display in the UI
+      if (metadata?.groundingChunks) {
+        metadata.groundingChunks.forEach((chunk: any) => {
+          if (chunk.web) {
+            sources.push({ 
+              title: chunk.web.title || "External Research Source", 
+              uri: chunk.web.uri 
+            });
+          }
         });
       }
 
