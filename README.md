@@ -1,66 +1,60 @@
 # 🌀 ResearchLoop
+### The Autonomous Paper-to-Code Orchestrator for the Action Era
 
-> **Autonomous Synthesis of Theoretical Papers into Verified Technical Blueprints.**
+> **Closing the "Translation Gap" between academic theory and verified execution.**
 
-ResearchLoop is a world-class autonomous research engineering agent designed for the **Gemini API Developer Competition**. It bridges the massive gap between static academic PDFs and production-ready code through a high-fidelity **Reasoning & Multimodal Execution Loop**.
-
----
-
-## 🏛 The Research Manifesto
-Theoretical knowledge is often trapped in PDFs. The complexity of modern research makes manual implementation prone to "translation loss." 
-
-**ResearchLoop** treats academic implementation as a closed-loop verification problem. It doesn't just "chat"—it **reasons, executes, and corrects** in a sandboxed WASM environment until the mathematical logic converges with reported benchmarks.
+ResearchLoop is an autonomous research engineering agent built for the **Gemini 3 Hackathon**. It moves beyond the "Chatbot Era" and enters the **Action Era**, treating dense academic PDFs not as text to be summarized, but as logic to be extracted, synthesized, and verified in a live browser runtime.
 
 ---
 
-## 🚀 Key Features
+## 🏛 The Vision: Beyond the Wrapper
+Google DeepMind's Gemini 3 signals a shift from static chat to **autonomous agents that plan and execute**. ResearchLoop is built on this premise. Most AI tools summarize papers; ResearchLoop **proves them**.
 
-### 1. Autonomous 8-Cycle Reasoning Loop
-Powered by **Gemini 3 Pro**, the agent enters a deep thinking state (up to 32k tokens) to:
-*   **Self-Correct:** Executes synthesized code in a browser-based WASM (Pyodide) container.
-*   **Traceback Analysis:** If a runtime error occurs, the agent analyzes the memory state, repairs the logic, and re-executes automatically.
-*   **Stability Convergence:** Tracks "Logic Stability" over multiple iterations to ensure parity with the paper.
-
-### 2. Multimodal "Pro" Suite
-*   **2K Architecture Visualizer:** Uses `gemini-3-pro-image-preview` to generate high-fidelity technical blueprints and data-flow schematics directly from paper methodologies.
-*   **Audio Theory Maps:** Leverages `gemini-2.5-flash-preview-tts` to synthesize spoken neural explanations of complex logic, making theory accessible via "Voice-over-Code."
-*   **Search Grounding:** Integrated `googleSearch` tool verifies academic claims against live web sources and citations.
-
-### 3. The "Explainer" Interface
-*   **Theory-to-Syntax Linkage:** A brutalist academic dashboard that maps abstract LaTeX equations directly to their Python implementation blocks.
-*   **Runtime State Inspector:** Live memory snapshot showing active WASM tensors, variables, and scalar values.
-*   **Agent Journey:** A chronological evolution map showing how the agent's logic matured through each correction cycle.
+By combining **Gemini 3 Pro’s high-thinking reasoning** with a **browser-based WASM (Pyodide) sandbox**, we’ve created a "Self-Correcting Marathon Agent" that iterates on code implementation until the mathematical logic converges with the paper’s methodology.
 
 ---
 
-## 🛠 Technical Stack
+## 🚀 Hackathon Strategic Tracks
 
-*   **Core Reasoning:** `gemini-3-pro-preview` & `gemini-3-flash-preview`.
-*   **Multimodal Assets:** `gemini-3-pro-image-preview` (2K Imaging) & `gemini-2.5-flash-preview-tts` (Audio).
-*   **WASM Sandbox:** Pyodide (Python 3.10) + NumPy.
-*   **Frontend:** React 19, Tailwind CSS (Academic Brutalist UI).
-*   **Visuals:** Recharts & Marked (Markdown rendering).
+### 🧠 The Marathon Agent (Autonomous Continuity)
+ResearchLoop doesn't give up on the first syntax error. It utilizes Gemini 3’s deep reasoning to maintain state across a **multi-step self-correction loop**. If the code fails in the WASM sandbox, the agent analyzes the traceback, re-evaluates the paper's equations, and repairs the logic autonomously.
 
----
+### ☯️ Vibe Engineering (Verified Artifacts)
+Following the "Antigravity" philosophy, ResearchLoop builds **verified artifacts**. We don't just output code; we output *working* code. The agent verifies its own synthesis through autonomous testing loops, ensuring that the "vibe" of the paper matches the reality of the execution.
 
-## 📂 System Architecture
-
-1.  **Ingestion:** Multimodal PDF analysis via Gemini.
-2.  **Synthesis:** Generation of a modular Python class and a companion test suite.
-3.  **Verification:** Execution in an isolated WASM runtime.
-4.  **Grounding:** Web-based verification of benchmarks and sources.
-5.  **Visualization:** Synthesis of 2K architecture diagrams and audio maps.
-6.  **Convergent Export:** Delivery of a verified, runnable `.py` module.
+### 🎨 Creative Autopilot (Multimodal Blueprints)
+We leverage the full Gemini 3 multimodal stack:
+*   **High-Fidelity Blueprints:** Using `gemini-2.5-flash-image` to generate 2D technical schematics and data-flow diagrams from extracted methodologies.
+*   **Voice Theory Maps:** Using `gemini-2.5-flash-preview-tts` to synthesize "Puck" neural audio explanations, making complex implementation logic accessible to the ears, not just the eyes.
 
 ---
 
-## 📖 How to Use
+## 🛠 How It Works (Technical Execution)
 
-1.  **Upload:** Drop a dense research PDF (e.g., *Transformer*, *Adam*, or *K-Means++*).
-2.  **Monitor:** Watch the "Internal State Representation" as the agent runs its diagnostic cycles.
-3.  **Explore:** Navigate the **Theory Map** to see how equations became code.
-4.  **Listen & View:** Use the Pro visualizer to see the architecture and hear the theory map.
+1.  **Multimodal Ingestion:** Gemini 3 analyzes the PDF, extracting latent variables and pseudocode.
+2.  **Reasoning-Heavy Synthesis:** Using a high `thinkingBudget`, the agent maps abstract LaTeX equations to Python/NumPy logic.
+3.  **WASM Verification:** The code is executed in an isolated **Pyodide (Python 3.10) runtime** within the browser.
+4.  **Diagnostic Feedback Loop:** 
+    *   *Success?* Move to visualization.
+    *   *Failure?* The agent ingests the raw traceback, identifies the conceptual misalignment, and initiates a repair cycle (up to 5 iterations).
+5.  **Multimodal Grounding:** Integrated `googleSearch` grounding verifies benchmarks and citations against the live web.
 
 ---
 
-*Built for the Gemini API Developer Competition 2025.*
+## ⚖️ Judging Criteria Alignment
+
+*   **Technical Execution:** Zero-dependency WASM execution + deep reasoning integration. High-quality modular Python output.
+*   **Innovation / Wow Factor:** Moving from "RAG" to "Autonomous Orchestration." The "Theory Map" feature that links equations directly to code lines is a unique implementation of multimodal reasoning.
+*   **Potential Impact:** Accelerates the speed of research-to-production for engineers, students, and scientists worldwide.
+*   **Presentation / Demo:** A brutalist, academic-focused UI that exposes the "Internal State Representation" of the agent's mind.
+
+---
+
+## 📖 Getting Started
+
+1.  **Drop a PDF:** Upload a dense research paper (e.g., *Attention is All You Need* or *Adam Optimizer*).
+2.  **Watch the Loop:** Monitor the "Agent Logs" as it fights through implementation hurdles and WASM tracebacks.
+3.  **Explore the Artifacts:** View the generated architecture, hear the theory map, and inspect the live memory state of the verified logic.
+
+---
+*Built with ❤️ for the Google DeepMind Gemini 3 Hackathon 2025.*
