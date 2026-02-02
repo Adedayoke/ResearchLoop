@@ -4,7 +4,7 @@ import { PaperAnalysis, ImplementationResult, GroundingSource } from "../types";
 
 export class GeminiService {
   private getClient() {
-    return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
   public isNotFoundError(error: any): boolean {
@@ -24,10 +24,10 @@ export class GeminiService {
             mimeType: "application/pdf"
           }
         },
-        { text: "Analyze this research paper. Extract the title, summary, core methodology, and algorithm logic in pseudocode. Identify key metrics and benchmarks mentioned." }
+        { text: "Analyze this research paper. Extract the title, summary, methodology, and algorithm pseudocode. CRITICAL: Use your Google Search tool to find official citations, GitHub repositories, or benchmarks related to this paper. I need you to find at least 3 external web sources to provide as grounding metadata. Ensure the groundingSources field in candidates is populated." }
       ],
       config: {
-        systemInstruction: "You are a world-class research engineer. Your goal is to extract technical logic from papers for implementation purposes. Return valid JSON.",
+        systemInstruction: "You are a research engineer. Extract logic for implementation. Always use Google Search to verify claims and provide grounding sources in your response metadata. Return the response as a clean JSON object.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -58,12 +58,17 @@ export class GeminiService {
     const data = JSON.parse(response.text || '{}');
     const sources: GroundingSource[] = [];
     
-    // Extract grounding sources if available
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-    if (groundingMetadata?.groundingChunks) {
-      groundingMetadata.groundingChunks.forEach((chunk: any) => {
-        if (chunk.web) {
-          sources.push({ title: chunk.web.title || 'Source', uri: chunk.web.uri });
+    // Robust Grounding Extraction from the model response
+    const metadata = response.candidates?.[0]?.groundingMetadata;
+    if (metadata?.groundingChunks) {
+      metadata.groundingChunks.forEach((chunk: any) => {
+        if (chunk.web && chunk.web.uri) {
+          if (!sources.find(s => s.uri === chunk.web.uri)) {
+            sources.push({ 
+              title: chunk.web.title || 'Verified Source', 
+              uri: chunk.web.uri 
+            });
+          }
         }
       });
     }
@@ -86,23 +91,24 @@ export class GeminiService {
       2. Provide a clean, modular class implementation.
       3. Include a comprehensive test suite (assertions) that verifies the core logic.
       4. Map theoretical concepts to specific code blocks.
-      5. Identify structural parity between the paper's claims and the implementation.`,
+      5. Identify structural parity between the paper's claims and the implementation.
+      6. In 'equationMappings', the 'theory' field must be PURE LaTeX (no markdown backticks, no quotes). Example: \\sum_{i=1}^n x_i`,
       config: {
-        systemInstruction: "You are a senior algorithm engineer. Synthesize high-performance, mathematically accurate Python code from research summaries. Use thinking to ensure mathematical correctness.",
+        systemInstruction: "You are a senior algorithm engineer. Synthesize high-performance, mathematically accurate Python code. Use thinking to ensure mathematical correctness. Always return raw LaTeX strings in JSON, never wrapped in markdown.",
         thinkingConfig: { thinkingBudget: isPro ? 16000 : 8000 },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             code: { type: Type.STRING, description: "The core implementation code." },
-            explanation: { type: Type.STRING, description: "Detailed technical explanation of the implementation." },
-            tests: { type: Type.STRING, description: "Standalone Python test code using assertions." },
+            explanation: { type: Type.STRING, description: "Detailed technical explanation." },
+            tests: { type: Type.STRING, description: "Python test code using assertions." },
             equationMappings: {
               type: Type.ARRAY,
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  theory: { type: Type.STRING },
+                  theory: { type: Type.STRING, description: "Pure LaTeX formula." },
                   codeSnippet: { type: Type.STRING },
                   explanation: { type: Type.STRING }
                 }
@@ -140,17 +146,9 @@ export class GeminiService {
 
     const response = await ai.models.generateContent({
       model,
-      contents: `The previous implementation of "${analysis.title}" failed during WASM verification.
-      
-      Error Logs:
-      ${errorLogs}
-      
-      Previous Code:
-      ${currentResult.code}
-      
-      Identify the logic error, fix it, and provide the corrected code and test suite.`,
+      contents: `The previous implementation of "${analysis.title}" failed. Error: ${errorLogs}. Fix the code: ${currentResult.code}`,
       config: {
-        systemInstruction: "You are an expert debugger. Analyze tracebacks, identify conceptual or syntactical errors in research implementations, and fix them. Ensure mathematical stability.",
+        systemInstruction: "You are an expert debugger. Analyze tracebacks and fix conceptual or syntactical errors.",
         thinkingConfig: { thinkingBudget: isPro ? 8000 : 4000 },
         responseMimeType: "application/json",
         responseSchema: {
@@ -172,15 +170,12 @@ export class GeminiService {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-image",
-        contents: `Create a professional technical architecture diagram and data-flow schematic for the research paper: "${analysis.title}". 
-        Style: Academic schematic, high-fidelity 2D blueprint, clear technical notations, vector-like clarity.`
+        contents: `Technical architecture schematic for: "${analysis.title}". Professional blueprint style.`
       });
-
       const parts = response.candidates?.[0]?.content?.parts || [];
       const imagePart = parts.find(p => p.inlineData);
       return imagePart?.inlineData?.data ? `data:image/png;base64,${imagePart.inlineData.data}` : undefined;
     } catch (e) {
-      console.error("Architecture visualization failed", e);
       return undefined;
     }
   }
@@ -190,7 +185,7 @@ export class GeminiService {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: `Provide a concise, expert neural explanation of the following implementation logic: ${implementation.explanation.substring(0, 500)}`,
+        contents: `Explain this implementation: ${implementation.explanation.substring(0, 500)}`,
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -200,10 +195,8 @@ export class GeminiService {
           }
         }
       });
-
       return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     } catch (e) {
-      console.error("Audio synthesis failed", e);
       return undefined;
     }
   }

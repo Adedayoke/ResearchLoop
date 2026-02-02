@@ -4,6 +4,45 @@ import { PaperAnalysis, ImplementationResult } from '../types';
 import { AreaChart, Area, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import { marked } from 'marked';
 
+// Helper component for LaTeX rendering
+const LatexContent: React.FC<{ content: string; className?: string }> = ({ content, className }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const render = () => {
+      if (containerRef.current && (window as any).katex) {
+        try {
+          // Robust sanitization: strip markdown code backticks, multiple types of quotes, and LaTeX wrappers
+          let cleaned = content.trim()
+            .replace(/^["'“‟”″‘`$]+|["'“‟”″’`$]+$/g, '') // Strip quotes, backticks, dollar signs
+            .replace(/^\\\[|\\\]$/g, '')                 // Strip \[ \]
+            .replace(/^\\\(|\\\)$/g, '')                 // Strip \( \)
+            .replace(/^\{|\}$/g, '')                      // Strip outermost braces if stray
+            .trim();
+          
+          if (cleaned.length > 0) {
+            (window as any).katex.render(cleaned, containerRef.current, {
+              throwOnError: false,
+              displayMode: true,
+              output: 'html'
+            });
+          }
+        } catch (e) {
+          console.warn("KaTeX render failed, falling back to text", e);
+          if (containerRef.current) containerRef.current.textContent = content;
+        }
+      }
+    };
+
+    render();
+    // Use a small timeout to handle script loading race conditions
+    const timer = setTimeout(render, 150);
+    return () => clearTimeout(timer);
+  }, [content]);
+
+  return <div ref={containerRef} className={`${className} min-h-[1.5em] overflow-x-auto`} />;
+};
+
 interface ResultsUIProps {
   analysis: PaperAnalysis;
   implementation: ImplementationResult;
@@ -49,15 +88,15 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation, onReset
   };
 
   const tabs = [
-    { id: 'summary', label: 'Summary' },
-    { id: 'explainer', label: 'Theory Map' },
-    { id: 'pro', label: 'AI Visualizer', pro: true },
-    { id: 'code', label: 'Implementation' },
-    { id: 'parity', label: 'Structural Analysis' },
-    { id: 'inspector', label: 'Runtime Inspector' },
-    { id: 'evolution', label: 'Agent Journey' },
-    { id: 'grounding', label: 'Search Sources', pro: true }
-  ].filter(tab => !tab.pro || (tab.pro && (implementation.architectureImage || (analysis.groundingSources && analysis.groundingSources.length > 0))));
+    { id: 'summary', label: 'Summary', show: true },
+    { id: 'explainer', label: 'Theory Map', show: !!implementation.equationMappings?.length },
+    { id: 'pro', label: 'AI Visualizer', pro: true, show: !!implementation.architectureImage },
+    { id: 'code', label: 'Implementation', show: true },
+    { id: 'parity', label: 'Structural Analysis', show: !!implementation.structuralParity?.length },
+    { id: 'inspector', label: 'Runtime Inspector', show: true },
+    { id: 'evolution', label: 'Agent Journey', show: !!implementation.history?.length },
+    { id: 'grounding', label: 'Search Sources', pro: true, show: (analysis.groundingSources && analysis.groundingSources.length > 0) }
+  ].filter(tab => tab.show);
 
   const renderMarkdown = (text: string) => {
     return { __html: marked.parse(text || '') };
@@ -170,7 +209,7 @@ const ResultsUI: React.FC<ResultsUIProps> = ({ analysis, implementation, onReset
                         <h4 className="text-[10px] font-black uppercase tracking-widest text-peach-accent">Methodology Segment</h4>
                         <span className="text-[9px] font-mono text-github-black/30">ID: {Math.random().toString(36).substr(2, 5).toUpperCase()}</span>
                       </div>
-                      <p className="text-2xl font-bold tracking-tight italic">"{map.theory}"</p>
+                      <LatexContent content={map.theory} className="text-2xl font-bold tracking-tight italic" />
                       <p className="text-sm text-github-black/60 font-medium leading-relaxed">{map.explanation}</p>
                     </div>
                     <div className="bg-github-black p-8 border border-github-black overflow-x-auto shadow-xl group-hover:scale-[1.01] transition-transform">

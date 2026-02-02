@@ -54,7 +54,7 @@ const App: React.FC = () => {
     if (aistudio && typeof aistudio.openSelectKey === 'function') {
       try {
         await aistudio.openSelectKey();
-        setIsPro(true); // Rule: assume success and proceed
+        setIsPro(true);
       } catch (err) {
         console.error("Key selection failed", err);
       }
@@ -93,11 +93,13 @@ const App: React.FC = () => {
         const base64 = (event.target?.result as string).split(',')[1];
         
         try {
+          // 1. ANALYZING
           setCurrentLog(isPro ? "Requesting Pro reasoning (Adaptive Tier)..." : "Analyzing algorithm structure...");
           const paperData = await geminiRef.current.analyzePaper(base64, isPro);
           setAnalysis(paperData);
           updateStep(AppState.ANALYZING, 'success');
           
+          // 2. IMPLEMENTING
           setState(AppState.IMPLEMENTING);
           updateStep(AppState.IMPLEMENTING, 'loading');
           setCurrentLog("Synthesizing research into runnable Python code...");
@@ -109,6 +111,7 @@ const App: React.FC = () => {
           const history: CodeVersion[] = [];
 
           while (!passed && iteration <= 5) {
+            // 3. TESTING
             setState(AppState.TESTING);
             updateStep(AppState.TESTING, 'loading', `Cycle ${iteration}`);
             setCurrentLog(`Sandbox: Testing logic stability (Iteration ${iteration})...`);
@@ -125,38 +128,48 @@ const App: React.FC = () => {
               stabilityScore: passed ? 100 : Math.min(95, 20 + (iteration * 15))
             });
 
-            if (!passed) {
-              if (iteration === 5) break;
+            if (passed) {
+              updateStep(AppState.TESTING, 'success');
+              // If we pass immediately, step 4 (Debugging) is conceptually finished/skipped
+              updateStep(AppState.DEBUGGING, 'success');
+              break;
+            } else {
+              if (iteration === 5) {
+                updateStep(AppState.TESTING, 'error');
+                break;
+              }
+              // 4. DEBUGGING
               setState(AppState.DEBUGGING);
               updateStep(AppState.DEBUGGING, 'loading', `Refining cycle ${iteration}`);
               setCurrentLog(`Agent: Repairing code via diagnostic feedback...`);
               const refined = await geminiRef.current.refineImplementation(paperData, result, runResults.logs, isPro);
               result = { ...result, ...refined, iterationCount: iteration + 1 };
+              updateStep(AppState.DEBUGGING, 'success');
               iteration++;
             }
           }
 
           result.history = history;
 
-          // Multimodal assets are strictly non-blocking
+          // 5. FINALIZING (Visualizing / Vocalizing)
+          setState(AppState.VISUALIZING);
+          updateStep(AppState.COMPLETED, 'loading');
+          setCurrentLog("Finalizing Results: Synthesizing multimodal blueprints...");
+
           if (isPro) {
-            setState(AppState.VISUALIZING);
-            updateStep(AppState.COMPLETED, 'loading');
-            setCurrentLog("Optional: Synthesis of technical blueprints...");
             try {
               const img = await geminiRef.current.generateArchitectureDiagram(paperData);
               if (img) result.architectureImage = img;
             } catch (imgErr) { console.warn("Image synthesis skipped:", imgErr); }
             
             setState(AppState.VOCALIZING);
+            setCurrentLog("Finalizing Results: Compiling neural vocal theory map...");
             try {
               result.audioData = await geminiRef.current.generateVocalExplanation(result);
             } catch (audErr) { console.warn("Audio synthesis skipped:", audErr); }
           }
 
           setState(AppState.COMPLETED);
-          updateStep(AppState.TESTING, passed ? 'success' : 'error');
-          updateStep(AppState.DEBUGGING, 'success');
           updateStep(AppState.COMPLETED, 'success');
           setImplementation(result);
 
@@ -175,7 +188,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-peach-100 text-github-black font-sans selection:bg-peach-accent selection:text-white relative overflow-x-hidden">
-      {/* Dynamic Background Grid */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.03] z-0" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
       
       {activeOverlay && (

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,9 +9,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- KaTeX for LaTeX Rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+
   <script>
-    window.process = window.process || { env: { API_KEY: "" } };
-    
     tailwind.config = {
       theme: {
         extend: {
@@ -69,6 +71,9 @@
     /* Page Transitions */
     .fade-enter { opacity: 0; }
     .fade-enter-active { opacity: 1; transition: opacity 300ms ease-in; }
+
+    /* Fix for LaTeX styling */
+    .katex-display { margin: 0; overflow-x: auto; overflow-y: hidden; }
   </style>
   <script type="importmap">
   {
